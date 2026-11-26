@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,7 @@ class GameClient:
         self.room_id: str | None = None
         self.last_seq: int = 0  # 最后收到的事件序号
         self.auth_token: str = ""  # 服务端签发的连接令牌
+        self.request_id: int = 0
 
         # WebSocket 连接
         self._ws: ClientConnection | None = None
@@ -134,6 +136,7 @@ class GameClient:
                 await self._dispatch(raw)
         except Exception as e:
             logger.warning(f"接收循环中断: {e}")
+        finally:
             self._connected = False
 
     async def _dispatch(self, raw: str) -> None:
@@ -151,6 +154,19 @@ class GameClient:
                 pid = msg.data.get("player_id", 0)
                 if pid:
                     self.player_id = pid
+
+            if msg.type in {MsgType.ROOM_JOINED, MsgType.ROOM_CREATED}:
+                self.room_id = msg.data["room_id"]
+                if msg.type == MsgType.ROOM_JOINED:
+                    self.player_id = msg.data["player_id"]
+                if "token" in msg.data:
+                    self.auth_token = msg.data["token"]
+            if msg.type == MsgType.ROOM_LEFT:
+                self.room_id = None
+            if msg.type == MsgType.GAME_REQUEST:
+                self.request_id = msg.data["request_id"]
+            if msg.type == MsgType.GAME_OVER:
+                self.request_id = 0
 
             # 调用注册的回调
             handler = self._handlers.get(msg.type)
@@ -178,10 +194,13 @@ class GameClient:
 
     async def _reconnect(self) -> bool:
         """尝试重连 (携带令牌用于身份验证)"""
+        token = self.auth_token
         for attempt in range(1, self.max_reconnect_attempts + 1):
             logger.info(f"重连尝试 {attempt}/{self.max_reconnect_attempts}...")
             await asyncio.sleep(self.reconnect_delay * attempt)
 
+            if not self._running:
+                return False
             if await self.connect():
                 # 重连后请求重放缺失的事件 (携带令牌)
                 if self.room_id:
@@ -193,7 +212,7 @@ class GameClient:
                                 "room_id": self.room_id,
                                 "reconnect": True,
                                 "last_seq": self.last_seq,
-                                "token": self.auth_token,
+                                "token": token,
                             },
                         )
                     )
@@ -206,27 +225,23 @@ class GameClient:
 
     async def run(self) -> None:
         """客户端主循环"""
-        if not await self.connect():
+        if not self.is_connected and not await self.connect():
             return
 
         self._running = True
 
         try:
-            # 并行运行接收循环和心跳
-            await asyncio.gather(
-                self._receive_loop(),
-                self._heartbeat_loop(),
-            )
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.warning(f"客户端异常: {e}")
+            while self._running:
+                heartbeat = asyncio.create_task(self._heartbeat_loop())
+                try:
+                    await self._receive_loop()
+                finally:
+                    heartbeat.cancel()
+                    await asyncio.gather(heartbeat, return_exceptions=True)
+                if not self._running or not self.auto_reconnect or not await self._reconnect():
+                    break
         finally:
-            if self._running and self.auto_reconnect:
-                if await self._reconnect():
-                    await self.run()  # 重连成功后重新运行
-            else:
-                await self.disconnect()
+            await self.disconnect()
 
     # ==================== 便捷操作方法 ====================
 
@@ -265,32 +280,54 @@ class GameClient:
             ClientMsg.game_action(
                 self.player_id,
                 "play_card",
-                {"card_id": card_id, "target_ids": target_ids or []},
+                {"request_id": self.request_id, "card_id": card_id, "target_ids": target_ids or []},
             )
         )
 
-    async def use_skill(self, skill_id: str, target_ids: list[int] = None) -> None:
+    async def use_skill(
+        self,
+        skill_id: str,
+        target_ids: list[int] | None = None,
+        card_ids: list[int] | None = None,
+    ) -> None:
         """使用技能"""
         await self.send(
             ClientMsg.game_action(
                 self.player_id,
                 "use_skill",
-                {"skill_id": skill_id, "target_ids": target_ids or []},
+                {
+                    "request_id": self.request_id,
+                    "skill_id": skill_id,
+                    "target_ids": target_ids or [],
+                    "card_ids": card_ids or [],
+                },
             )
         )
 
     async def end_turn(self) -> None:
         """结束回合"""
-        await self.send(ClientMsg.game_action(self.player_id, "end_turn"))
+        await self.send(
+            ClientMsg.game_action(self.player_id, "end_turn", {"request_id": self.request_id})
+        )
+
+    async def discard(self, card_ids: list[int]) -> None:
+        """提交弃牌选项。"""
+        await self.send(
+            ClientMsg.game_action(
+                self.player_id, "discard", {"request_id": self.request_id, "card_ids": card_ids}
+            )
+        )
 
     async def respond(self, request_type: str, accepted: bool, card_id: int = None) -> None:
         """响应请求"""
-        data = {"card_id": card_id} if card_id is not None else {}
+        data = {"request_id": self.request_id, "card_id": card_id}
         await self.send(ClientMsg.game_response(self.player_id, request_type, accepted, data))
 
     async def choose_hero(self, hero_id: str) -> None:
         """选择武将"""
-        await self.send(ClientMsg.hero_chosen(self.player_id, hero_id))
+        msg = ClientMsg.hero_chosen(self.player_id, hero_id)
+        msg.data["request_id"] = self.request_id
+        await self.send(msg)
 
     async def chat(self, message: str) -> None:
         """发送聊天"""
@@ -301,49 +338,128 @@ class GameClient:
 
 
 async def cli_client_main(server_url: str, player_name: str):
-    """简化的命令行客户端"""
+    """Run the interactive LAN client."""
     client = GameClient(server_url)
     client.player_name = player_name
+    current = None
 
-    # 注册回调
-    cli_log = logging.getLogger("sanguosha.cli")
+    def show_request(msg: ServerMsg):
+        nonlocal current
+        current = msg
+        request_type = msg.data["request_type"]
+        options = msg.data["options"]
+        if request_type == "choose_hero":
+            print(
+                "选将",
+                " / ".join(f"{hero['id']} {hero['name']}" for hero in options["heroes"]),
+                flush=True,
+            )
+            return
+        print(
+            request_type,
+            " / ".join(f"{card['id']} {card['display']}" for card in options["cards"]),
+            flush=True,
+        )
+        if request_type == "play":
+            print(
+                "目标",
+                " / ".join(f"{seat['id']} {seat['name']}" for seat in options["targets"]),
+                flush=True,
+            )
+            if options["skills"]:
+                print("可用技能", " / ".join(options["skills"]), flush=True)
+        if request_type == "discard":
+            print(f"请选择 {options['count']} 张弃牌", flush=True)
 
-    def on_room_created(msg: ServerMsg):
-        client.room_id = msg.data.get("room_id", "")
-        cli_log.info("✓ 房间已创建: %s", client.room_id)
+    def show_state(msg: ServerMsg):
+        data = msg.data
+        print(f"第 {data['round']} 轮 · {data['phase']} · 你的身份 {data['identity']}")
+        for seat in data["players"]:
+            status = f"{seat['hp']}/{seat['max_hp']} 体力" if seat["alive"] else "阵亡"
+            print(
+                f"  {seat['id']} {seat['name']} · {seat['hero']} · {status} · {seat['hand_count']} 手牌"
+            )
+        print(
+            "你的手牌",
+            " / ".join(f"{card['id']} {card['display']}" for card in data["hand"]),
+            flush=True,
+        )
 
-    def on_room_joined(msg: ServerMsg):
-        client.room_id = msg.data.get("room_id", "")
-        client.player_id = msg.data.get("player_id", 0)
-        cli_log.info("✓ 已加入房间 %s, 你的 ID: %s", client.room_id, client.player_id)
+    client.on(MsgType.GAME_REQUEST, show_request)
+    client.on(MsgType.GAME_STATE, show_state)
+    for kind in (MsgType.ROOM_CREATED, MsgType.ROOM_JOINED):
+        client.on(kind, lambda msg: print(f"房间 {msg.data['room_id']}", flush=True))
+    client.on(
+        MsgType.ROOM_UPDATE,
+        lambda msg: print(
+            "房间玩家",
+            " / ".join(
+                f"{p['name']} ({'已准备' if p['ready'] else '未准备'})" for p in msg.data["players"]
+            ),
+            flush=True,
+        ),
+    )
+    client.on(
+        MsgType.GAME_OVER,
+        lambda msg: print(f"对局结束 · {msg.data['winner']} · {msg.data['reason']}", flush=True),
+    )
+    client.on(MsgType.ERROR, lambda msg: print(msg.data["message"], flush=True))
+    if not await client.connect():
+        print("连接失败，请检查服务器地址。", flush=True)
+        return
 
-    def on_room_update(msg: ServerMsg):
-        players = msg.data.get("players", [])
-        state = msg.data.get("state", "")
-        cli_log.info("房间状态: %s, 玩家: %s", state, [p["name"] for p in players])
-
-    def on_game_event(msg: ServerMsg):
-        event_type = msg.data.get("event_type", "")
-        cli_log.info("[事件] %s: %s", event_type, msg.data)
-
-    def on_game_over(msg: ServerMsg):
-        cli_log.info("游戏结束! 胜者: %s", msg.data.get("winner"))
-
-    def on_chat(msg: ServerMsg):
-        cli_log.info("💬 %s: %s", msg.data.get("player_name"), msg.data.get("message"))
-
-    def on_error(msg: ServerMsg):
-        cli_log.error("❌ 错误: %s", msg.data.get("message"))
-
-    client.on(MsgType.ROOM_CREATED, on_room_created)
-    client.on(MsgType.ROOM_JOINED, on_room_joined)
-    client.on(MsgType.ROOM_UPDATE, on_room_update)
-    client.on(MsgType.GAME_EVENT, on_game_event)
-    client.on(MsgType.GAME_OVER, on_game_over)
-    client.on(MsgType.CHAT_BROADCAST, on_chat)
-    client.on(MsgType.ERROR, on_error)
-
-    await client.run()
+    reader = asyncio.StreamReader()
+    input_transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(reader), sys.stdin
+    )
+    connection = asyncio.create_task(client.run())
+    print(
+        "create [人数] / join 房间号 / ready / start / hero 武将ID / "
+        "play 手牌号 [目标号…] / skill 技能ID [目标号…] [--cards 牌号…] / end / "
+        "discard 牌号… / respond [牌号] / quit",
+        flush=True,
+    )
+    try:
+        while line := await reader.readline():
+            command, *arguments = line.decode().strip().split() or [""]
+            if command == "quit":
+                break
+            try:
+                if command == "create":
+                    await client.create_room(player_name, int(arguments[0]) if arguments else 2)
+                elif command == "join":
+                    await client.join_room(player_name, arguments[0])
+                elif command == "ready":
+                    await client.set_ready()
+                elif command == "start":
+                    await client.start_game()
+                elif command == "hero":
+                    await client.choose_hero(arguments[0])
+                elif command == "play":
+                    await client.play_card(int(arguments[0]), list(map(int, arguments[1:])))
+                elif command == "skill":
+                    options = " ".join(arguments[1:])
+                    targets, _, cards = options.partition("--cards")
+                    await client.use_skill(
+                        arguments[0], list(map(int, targets.split())), list(map(int, cards.split()))
+                    )
+                elif command == "end":
+                    await client.end_turn()
+                elif command == "discard":
+                    await client.discard(list(map(int, arguments)))
+                elif command == "respond" and current is not None:
+                    kind = current.data["request_type"]
+                    await client.respond(
+                        kind, bool(arguments), int(arguments[0]) if arguments else None
+                    )
+                elif command:
+                    print("无法识别命令", flush=True)
+            except (IndexError, ValueError):
+                print("命令参数有误", flush=True)
+    finally:
+        input_transport.close()
+        await client.disconnect()
+        await connection
 
 
 def main():

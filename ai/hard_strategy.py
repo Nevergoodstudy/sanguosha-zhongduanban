@@ -227,7 +227,7 @@ class HardStrategy:
     def __init__(self, player: Player):
         self.threat_evaluator = ThreatEvaluator(player)
         self.identity_predictor = IdentityPredictor(player)
-        self._normal = NormalStrategy()
+        self._normal = NormalStrategy(self.choose_best_target)
         self._player = player
 
     def play_phase(self, player: Player, engine: GameEngine) -> None:
@@ -243,6 +243,10 @@ class HardStrategy:
 
         # 使用普通AI逻辑（目标选择已利用嘲讽值）
         self._normal.play_phase(player, engine)
+
+    @property
+    def reached_action_limit(self) -> bool:
+        return self._normal.reached_action_limit
 
     def choose_discard(self, player: Player, count: int, engine: GameEngine) -> list[Card]:
         """智能弃牌（同普通模式）"""

@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ai.bot import AIBot, AIDifficulty
-from game.card import Card, CardSubtype, CardSuit, CardType
+from game.card import Card, CardName, CardSubtype, CardSuit, CardType
 from game.engine import GameEngine, GamePhase, GameState
 from game.player import Identity, Player
 
@@ -146,6 +146,25 @@ class AutoBattleSimulator:
 
 class TestAutoBattle(unittest.TestCase):
     """自动对局测试"""
+
+    def test_normal_ai_ends_turn_when_wuzhong_cards_keep_cycling(self):
+        engine = GameEngine()
+        engine.setup_headless_game(3, ai_difficulty="normal", seed=42)
+        player = engine.current_player
+        first, second = [
+            card for card in engine.deck.draw_pile if card.name == CardName.WUZHONG
+        ][:2]
+        for other in engine.players:
+            other.hand.clear()
+        player.hand.append(first)
+        engine.deck.draw_pile.clear()
+        engine.deck.discard_pile[:] = [second]
+        engine.phase = GamePhase.PLAY
+
+        engine.ai_bots[player.id].play_phase(player, engine)
+
+        self.assertEqual(len(player.hand), 1)
+        self.assertCountEqual(player.hand + engine.deck.discard_pile, [first, second])
 
     def test_2_player_battle(self):
         """测试2人对战"""

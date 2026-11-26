@@ -10,6 +10,7 @@ authors = [
 keywords = ["game", "card-game", "three-kingdoms", "sanguosha"]
 
 dependencies = [
+    "pydantic>=2.0,<3",
     "rich>=13.0.0",
     "textual>=0.40.0",
     "websockets>=12.0",
@@ -17,16 +18,16 @@ dependencies = [
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
+build = ["pyinstaller==6.22.3"]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=6.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-randomly>=3.15.0",
     "hypothesis>=6.100.0",
-    "ruff>=0.8.0",
+    "ruff==0.17.6",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
-    "pyinstaller>=5.0.0",
 ]
 
 [project.scripts]
@@ -35,6 +36,17 @@ sanguosha = "main:main"
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["main", "logging_config"]
+
+[tool.setuptools.packages.find]
+include = ["ai", "data", "game", "game.*", "i18n", "net", "tools", "ui", "ui.*"]
+
+[tool.setuptools.package-data]
+data = ["cards.json", "heroes.json", "heroes_new.json", "card_effects.json", "skill_config.json", "skill_dsl.json"]
+i18n = ["en_US.json", "zh_CN.json"]
+"ui.textual_ui" = ["styles/*.tcss"]
 
 # Ruff 配置 (统一替代 Black + isort + flake8)
 [tool.ruff]

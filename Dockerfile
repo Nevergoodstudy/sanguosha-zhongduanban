@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ============================================================
 # 三国杀终端版 — Docker 部署
 # ============================================================
@@ -9,9 +10,8 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# 仅复制依赖描述文件以利用缓存
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir --prefix=/install .
+COPY . .
+RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels .
 
 # ---------- Stage 2: Runtime ----------
 FROM python:3.12-slim AS runtime
@@ -24,11 +24,10 @@ RUN groupadd -r sanguosha && useradd -r -g sanguosha -d /app sanguosha
 
 WORKDIR /app
 
-# 从 builder 拷贝已安装的依赖
-COPY --from=builder /install /usr/local
-
-# 复制项目代码
-COPY . .
+# 运行从 pyproject.toml 构建的 wheel
+RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
+    python -m pip install --no-cache-dir --no-index --find-links /wheels sanguosha && \
+    python -m pip check
 
 # 确保数据目录存在且有权限
 RUN mkdir -p /app/logs /app/saves && \

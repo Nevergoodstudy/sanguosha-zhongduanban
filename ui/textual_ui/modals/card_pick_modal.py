@@ -14,6 +14,7 @@ dismiss(None)            → 取消
 
 from __future__ import annotations
 
+from random import Random
 from typing import TYPE_CHECKING, Optional
 
 from textual.app import ComposeResult
@@ -63,7 +64,7 @@ class CardPickModal(AnimatedModalScreen[Optional[int]]):
     }
     """
 
-    def __init__(self, target, all_cards: list):
+    def __init__(self, target, all_cards: list, *, rng: Random | None = None):
         """Args:
         target: Player — 被选牌的目标
         all_cards: 该玩家所有牌列表（与 get_all_cards 返回一致）
@@ -71,6 +72,7 @@ class CardPickModal(AnimatedModalScreen[Optional[int]]):
         super().__init__()
         self._target = target
         self._all_cards = all_cards
+        self._rng = rng if rng is not None else Random()
 
     def compose(self) -> ComposeResult:
         target = self._target
@@ -132,11 +134,9 @@ class CardPickModal(AnimatedModalScreen[Optional[int]]):
         btn_id = event.button.id or ""
         if btn_id == "pick-hand":
             # 随机选一张手牌
-            import random
-
             target = self._target
             if target.hand:
-                card = random.choice(target.hand)
+                card = self._rng.choice(target.hand)
                 try:
                     idx = self._all_cards.index(card)
                     self.dismiss(idx)

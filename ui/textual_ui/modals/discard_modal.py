@@ -16,6 +16,8 @@ from textual.containers import Container, Horizontal
 from textual.timer import Timer
 from textual.widgets import Button, Static
 
+from i18n import card_name
+from i18n import t as _t
 from ui.textual_ui.modals.base import AnimatedModalScreen
 
 if TYPE_CHECKING:
@@ -65,6 +67,9 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
         min-width: 18;
         margin: 0 1 1 0;
     }
+    DiscardModal Button:focus {
+        text-style: bold reverse;
+    }
     DiscardModal .discard-card-btn.selected {
         border: heavy $error;
         background: $error-darken-2;
@@ -92,7 +97,7 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
     def compose(self) -> ComposeResult:
         with Container(id="discard-container"):
             yield Static(
-                f"🗑 弃牌阶段 — 请选择 {self._need_count} 张牌弃掉",
+                _t("ui.modal.discard_title", count=self._need_count),
                 id="discard-title",
             )
             yield Static(
@@ -100,14 +105,11 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
                 id="discard-status",
             )
             if self._countdown > 0:
-                yield Static(f"⏱ {self._remaining}s", id="discard-countdown")
+                yield Static(_t("ui.play.countdown", seconds=self._remaining), id="discard-countdown")
 
             with Horizontal(classes="card-row"):
                 for i, card in enumerate(self._cards):
-                    suit_map = {"spade": "♠", "heart": "♥", "club": "♣", "diamond": "♦"}
-                    suit_icon = suit_map.get(getattr(card.suit, "value", ""), "?")
-                    color = "red" if suit_icon in ("♥", "♦") else "white"
-                    label = f"{suit_icon}{card.number_str} {card.name}"
+                    label = f"{card.suit.symbol}{card.number_str} {card_name(card.name)}"
                     yield Button(
                         label,
                         id=f"dcard-{i}",
@@ -116,7 +118,7 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
                     )
 
             yield Button(
-                f"✅ 确认弃牌 (0/{self._need_count})",
+                _t("ui.modal.discard"),
                 id="btn-confirm-discard",
                 variant="success",
                 disabled=True,
@@ -131,7 +133,7 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
         self._remaining -= 1
         try:
             cd = self.query_one("#discard-countdown", Static)
-            cd.update(f"⏱ {self._remaining}s")
+            cd.update(_t("ui.play.countdown", seconds=self._remaining))
         except Exception:
             pass
         if self._remaining <= 0:
@@ -143,9 +145,9 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
 
     def _status_text(self) -> str:
         selected = len(self._selected)
-        if selected < self._need_count:
-            return f"[yellow]已选 {selected}/{self._need_count} 张[/yellow]"
-        return f"[green]已选 {selected}/{self._need_count} 张 ✓[/green]"
+        color = "green" if selected == self._need_count else "yellow"
+        status = _t("ui.modal.cards_selected", count=selected, total=self._need_count)
+        return f"[{color}]{status}[/{color}]"
 
     def _refresh_ui(self) -> None:
         """刷新选中状态"""
@@ -172,7 +174,6 @@ class DiscardModal(AnimatedModalScreen[Optional[list[int]]]):
             confirm = self.query_one("#btn-confirm-discard", Button)
             ok = len(self._selected) == self._need_count
             confirm.disabled = not ok
-            confirm.label = f"✅ 确认弃牌 ({len(self._selected)}/{self._need_count})"
         except Exception:
             pass
 

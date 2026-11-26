@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-import random
 from typing import TYPE_CHECKING
 
 from i18n import t as _t
@@ -127,13 +126,13 @@ class GameController:
                 available = lord_heroes.copy()
                 remaining = 5 - len(available)
                 if remaining > 0:
-                    extra = random.sample(normal_heroes, min(remaining, len(normal_heroes)))
+                    extra = self.engine.rng.sample(normal_heroes, min(remaining, len(normal_heroes)))
                     available.extend(extra)
-                random.shuffle(available)
+                self.engine.rng.shuffle(available)
                 available = available[:5]
             else:
                 self.ui.show_log(_t("controller.choose_hero"))
-                available = random.sample(normal_heroes, min(3, len(normal_heroes)))
+                available = self.engine.rng.sample(normal_heroes, min(3, len(normal_heroes)))
 
             selected = self.ui.show_hero_selection(available, 1, is_lord)
 
@@ -192,8 +191,8 @@ class GameController:
             preferred = [h for h in available if h.max_hp >= 4 or len(h.skills) >= 2]
 
         if preferred:
-            return random.choice(preferred)
-        return random.choice(available)
+            return self.engine.rng.choice(preferred)
+        return self.engine.rng.choice(available)
 
     def _setup_ai_bots(self) -> None:
         """设置AI机器人"""

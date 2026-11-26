@@ -45,9 +45,9 @@ class EquipmentSystem:
         # 装备前事件（可取消）
         before_event = ctx.event_bus.emit(EventType.BEFORE_EQUIP, player=player, card=card)
         if before_event.cancelled:
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         old_equipment = player.equip_card(card)
         ctx.log_event(
             "equip",

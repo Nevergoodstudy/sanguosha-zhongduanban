@@ -90,7 +90,7 @@ class TestCanUse:
 
 
 class TestResolve:
-    def test_condition_fail_return_card(self):
+    def test_condition_fail_leaves_card_in_hand(self):
         config = {
             "condition": {"check": "hp_below_max"},
             "condition_fail_action": "return_card",
@@ -102,7 +102,8 @@ class TestResolve:
         card = _make_card()
         result = effect.resolve(engine, player, card, [])
         assert result is False
-        player.draw_cards.assert_called_once_with([card])
+        player.remove_card.assert_not_called()
+        engine.deck.discard.assert_not_called()
 
     def test_condition_fail_no_return(self):
         config = {"condition": {"check": "hp_below_max"}}

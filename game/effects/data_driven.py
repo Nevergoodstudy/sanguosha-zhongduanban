@@ -56,9 +56,9 @@ class DataDrivenCardEffect(CardEffect):
                         "error",
                         self._config.get("condition_fail_msg", _t("effect.condition_fail")),
                     )
-                    player.draw_cards([card])
                 return False
 
+        player.remove_card(card)
         scope = self._config.get("scope")
         use_wuxie = self._config.get("wuxie", False)
 

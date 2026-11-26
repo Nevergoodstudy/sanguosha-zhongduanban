@@ -12,6 +12,8 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Static
 
+from i18n import card_name
+
 if TYPE_CHECKING:
     pass
 
@@ -86,7 +88,7 @@ class CardWidget(Static, can_focus=True):
         border: heavy $accent;
         background: $accent-darken-3;
     }
-    CardWidget:focus {
+    CardWidget:focus, CardWidget.playable:focus {
         border: heavy $success;
         background: $success-darken-2;
         text-style: bold;
@@ -114,12 +116,13 @@ class CardWidget(Static, can_focus=True):
     class CardClicked(Message):
         """卡牌被点击"""
 
-        def __init__(self, index: int, card=None) -> None:
+        def __init__(self, index: int, card=None, request_id: int = 0) -> None:
             super().__init__()
             self.index = index
             self.card = card
+            self.request_id = request_id
 
-    def __init__(self, card, index: int = -1, **kwargs):
+    def __init__(self, card, index: int = -1, *, request_id: int = 0, **kwargs):
         """Args:
         card: game.card.Card 对象
         index: 手牌中的索引
@@ -127,6 +130,7 @@ class CardWidget(Static, can_focus=True):
         super().__init__(**kwargs)
         self._card = card
         self.card_index = index
+        self._request_id = request_id
         # 设置 tooltip
         self.tooltip = self._build_tooltip()
 
@@ -136,7 +140,7 @@ class CardWidget(Static, can_focus=True):
         suit_val = getattr(c.suit, "value", "") if hasattr(c, "suit") else ""
         suit_icon = SUIT_ICONS.get(suit_val, "")
         number = c.number_str if hasattr(c, "number_str") else "?"
-        parts = [f"【{c.name}】 {suit_icon}{number}"]
+        parts = [f"【{card_name(c.name)}】 {suit_icon}{number}"]
         # 卡类类型
         type_map = {"basic": "基本牌", "trick": "锦囊牌", "equipment": "装备牌"}
         if hasattr(c, "card_type"):
@@ -167,11 +171,11 @@ class CardWidget(Static, can_focus=True):
         suit_icon = SUIT_ICONS.get(suit_val, "?")
         suit_color = SUIT_COLORS.get(suit_val, "white")
         number = c.number_str if hasattr(c, "number_str") else "?"
-        name = str(c.name) if hasattr(c, "name") else "?"
+        name = card_name(c.name)
 
         # 截断长名
-        if len(name) > 6:
-            name = name[:5] + "…"
+        if len(name) > 13:
+            name = name[:12] + "…"
 
         type_icon = ""
         if hasattr(c, "card_type"):
@@ -194,12 +198,12 @@ class CardWidget(Static, can_focus=True):
         )
 
     def on_click(self) -> None:
-        self.post_message(self.CardClicked(self.card_index, self._card))
+        self.post_message(self.CardClicked(self.card_index, self._card, self._request_id))
 
     def on_key(self, event) -> None:
         """键盘交互：Enter/Space 等同于点击"""
         if event.key in ("enter", "space"):
-            self.post_message(self.CardClicked(self.card_index, self._card))
+            self.post_message(self.CardClicked(self.card_index, self._card, self._request_id))
             event.prevent_default()
             event.stop()
 

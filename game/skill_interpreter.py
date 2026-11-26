@@ -8,7 +8,6 @@ DSL 优先、Python fallback。
 from __future__ import annotations
 
 import logging
-import random
 from typing import TYPE_CHECKING, Any
 
 from i18n import t as _t
@@ -278,7 +277,7 @@ class SkillInterpreter:
                 source_player = ctx.source
                 if source_player and source_player.has_any_card():
                     all_cards = source_player.get_all_cards()
-                    card = random.choice(all_cards)
+                    card = ctx.engine.rng.choice(all_cards)
                     if card in source_player.hand:
                         source_player.remove_card(card)
                     else:

@@ -2,6 +2,8 @@
 Textual TUI 测试（M3）
 """
 
+import pytest
+
 from ui.protocol import GameDisplay, GameInput, GameNotify, GameUI
 from ui.textual_ui.app import (
     GameOverScreen,
@@ -211,3 +213,152 @@ class TestMainEntry:
         assert args.server is None
         assert args.connect is None
         assert args.replay is None
+
+
+def _fixed_duel():
+    from game.card import CardName
+    from game.engine import GameEngine
+
+    engine = GameEngine()
+    engine.setup_game(2, seed=1)
+    engine.choose_heroes({0: "liubei", 1: "guanyu"})
+    engine.start_game()
+    human = engine.human_player
+    deck = engine.deck.draw_pile
+    sha = next(card for card in deck if card.name == CardName.SHA)
+    deck.remove(sha)
+    human.hand[:] = [sha]
+    engine.players[1].hand.clear()
+    return engine
+
+
+async def _wait_until(pilot, condition):
+    import asyncio
+
+    async def wait():
+        while not condition():
+            await pilot.pause(0.01)
+
+    await asyncio.wait_for(wait(), timeout=4)
+
+
+@pytest.mark.asyncio
+async def test_contentment_draws_then_discards_without_human_play():
+    from game.card import CardName, CardSuit
+    from game.events import EventType
+    from ui.textual_ui.modals.discard_modal import DiscardModal
+    from ui.textual_ui.screens.game_play import GamePlayScreen
+
+    engine = _fixed_duel()
+    player = engine.human_player
+    player.hp = 1
+    deck = engine.deck.draw_pile
+    contentment = next(card for card in deck if card.name == CardName.LEBUSISHU)
+    deck.remove(contentment)
+    judgment = next(card for card in deck if card.suit == CardSuit.SPADE)
+    deck.remove(judgment)
+    deck.append(judgment)
+    player.judge_area.append(contentment)
+    played = []
+    engine.event_bus.subscribe(EventType.PHASE_PLAY_START, lambda event: played.append(event))
+
+    app = SanguoshaApp()
+    app._engine = engine
+    screen = GamePlayScreen()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await app.push_screen(screen)
+        await _wait_until(pilot, lambda: isinstance(app.screen, DiscardModal))
+        assert not played
+        assert player.hand_count == 3
+        assert not player.skip_play_phase
+        assert engine.deck.discard_pile[-2:] == [judgment, contentment]
+        assert screen._play_request is None
+        await pilot.press("q")
+        await _wait_until(pilot, lambda: screen._game_worker.is_finished)
+        assert app._exit
+        assert player.hand_count == 3
+
+
+def test_face_down_hero_skips_one_turn_and_keeps_judgment_area():
+    from game.card import CardName
+    from game.events import EventType
+
+    engine = _fixed_duel()
+    player = engine.human_player
+    deck = engine.deck.draw_pile
+    lightning = next(card for card in deck if card.name == CardName.SHANDIAN)
+    deck.remove(lightning)
+    player.judge_area.append(lightning)
+    player.toggle_flip()
+    turns = []
+    engine.event_bus.subscribe(EventType.TURN_START, lambda event: turns.append(event.data["player"]))
+    remaining = engine.deck.remaining
+
+    engine.run_turn()
+
+    assert not turns
+    assert not player.flipped
+    assert player.judge_area == [lightning]
+    assert engine.deck.remaining == remaining
+
+    engine.run_turn()
+
+    assert turns == [player]
+    assert not player.judge_area
+    assert engine.deck.remaining < remaining
+
+
+@pytest.mark.asyncio
+async def test_input_between_target_requests_is_ignored_and_quit_joins_worker():
+    from ui.textual_ui.modals.target_modal import TargetSelectModal
+    from ui.textual_ui.screens.game_play import GamePlayScreen
+    from ui.textual_ui.widgets.card_widget import CardWidget
+
+    engine = _fixed_duel()
+    app = SanguoshaApp()
+    app._engine = engine
+    screen = GamePlayScreen(practice=True)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await app.push_screen(screen)
+        await _wait_until(pilot, lambda: screen._play_request is not None)
+        first_request = screen._play_request
+        old_click = CardWidget.CardClicked(
+            0, engine.human_player.hand[0], request_id=screen._play_request_id
+        )
+        await pilot.press("1")
+        await _wait_until(pilot, lambda: isinstance(app.screen, TargetSelectModal))
+        await pilot.press("e")
+        await pilot.press("escape")
+        await _wait_until(pilot, lambda: screen._play_request is not None)
+        assert screen._play_request is not first_request
+        assert engine.current_player is engine.human_player
+        screen.post_message(old_click)
+        await pilot.pause()
+        assert app.screen is screen
+        await pilot.press("1")
+        await _wait_until(pilot, lambda: isinstance(app.screen, TargetSelectModal))
+        await pilot.press("ctrl+q")
+        await _wait_until(pilot, lambda: screen._game_worker.is_finished)
+        assert app._exit
+        assert engine.human_player.hand[0].name == "杀"
+
+
+@pytest.mark.asyncio
+async def test_standard_play_turn_keeps_info_visible_during_countdown():
+    from textual.widgets import Static
+
+    from i18n import t
+    from ui.textual_ui.screens.game_play import GamePlayScreen
+
+    app = SanguoshaApp()
+    app._engine = _fixed_duel()
+    screen = GamePlayScreen()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await app.push_screen(screen)
+        await _wait_until(pilot, lambda: screen._countdown_timer is not None)
+        info = screen.query_one("#info-panel", Static)
+        assert app._engine.human_player.name in str(info.render())
+        assert t("ui.play.countdown", seconds=screen.play_phase_timeout) in str(info.render())
+        await pilot.press("q")
+        await _wait_until(pilot, lambda: screen._game_worker.is_finished)
+        assert app._exit

@@ -58,7 +58,8 @@ class SanguoshaApp(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+q", "quit", "退出"),
+        Binding("ctrl+q", "quit", "退出", priority=True),
+        Binding("q", "quit_match", show=False, priority=True),
     ]
 
     def __init__(self):
@@ -68,3 +69,23 @@ class SanguoshaApp(App):
 
     def on_mount(self) -> None:
         self.push_screen(MainMenuScreen())
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "quit_match":
+            return isinstance(self.screen, GamePlayScreen) or (
+                self.screen.is_modal
+                and any(isinstance(screen, GamePlayScreen) for screen in self.screen_stack)
+            )
+        return super().check_action(action, parameters)
+
+    def action_quit_match(self) -> None:
+        for screen in reversed(self.screen_stack):
+            if isinstance(screen, GamePlayScreen):
+                screen.action_quit_game()
+                return
+
+    async def action_quit(self) -> None:
+        if any(isinstance(screen, GamePlayScreen) for screen in self.screen_stack):
+            self.action_quit_match()
+            return
+        await super().action_quit()

@@ -96,6 +96,15 @@ class TestMatchResult:
 
 
 class TestMatchHistory:
+    def test_save_preserves_corrupted_history(self, tmp_path_file):
+        tmp_path_file.write_text("not json", encoding="utf-8")
+        history = MatchHistory(tmp_path_file)
+        history.load()
+        history.record(_make_result())
+        with pytest.raises(OSError):
+            history.save()
+        assert tmp_path_file.read_text(encoding="utf-8") == "not json"
+
     """MatchHistory 管理器测试。"""
 
     def test_record_assigns_id(self, tmp_path_file):

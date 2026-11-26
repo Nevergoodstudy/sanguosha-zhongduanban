@@ -1,5 +1,6 @@
 """Tests for game.request_handler.DefaultRequestHandler."""
 
+from random import Random
 from unittest.mock import MagicMock
 
 from game.card import CardName, CardSuit
@@ -8,6 +9,7 @@ from game.request_handler import DefaultRequestHandler
 
 def _make_engine():
     engine = MagicMock()
+    engine.rng = Random(42)
     engine.ui = MagicMock()
     return engine
 

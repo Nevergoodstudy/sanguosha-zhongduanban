@@ -5,26 +5,23 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban/releases/latest">
-    <img src="https://img.shields.io/github/v/release/nevergoodstudy-hub/sanguosha-zhongduanban?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC" alt="Latest Release">
+  <a href="https://github.com/Nevergoodstudy/sanguosha-zhongduanban/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Nevergoodstudy/sanguosha-zhongduanban?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC" alt="Latest Release">
   </a>
-  <a href="https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban/actions/workflows/ci.yml">
-    <img src="https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/Nevergoodstudy/sanguosha-zhongduanban/actions/workflows/ci.yml">
+    <img src="https://github.com/Nevergoodstudy/sanguosha-zhongduanban/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/TUI-Textual-blueviolet" alt="Textual">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-green" alt="Platform">
   <img src="https://img.shields.io/badge/code%20style-ruff-261230.svg" alt="Code style: ruff">
-  <img src="https://img.shields.io/badge/tests-1503%20passed-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/coverage-77.91%25-yellowgreen" alt="Coverage">
 </p>
 
 ---
 
 ## 🎮 游戏概览
 
-全鼠标点击交互的终端三国杀，基于 [Textual](https://textual.textualize.io/) TUI 框架构建。
-支持 2-8 人身份模式、20+ 武将、完整卡牌系统和三级 AI 对战。
+三国题材的终端身份卡牌游戏，基于 [Textual](https://textual.textualize.io/) 构建。支持键盘和鼠标、2–8 人单机身份局、三档 AI 和固定练习局。对局结束后可查看战报，局域网联机提供内测入口。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -44,7 +41,7 @@
 ## ✨ 核心特性
 
 ### 🖥️ Textual TUI 界面
-- **全鼠标交互** — 点击手牌出牌、点击面板选目标、弹窗式操作
+- **键盘和鼠标** — 数字键选牌，Tab 切换焦点，Enter 确认，E 结束出牌
 - **阶段指示器** — 实时显示当前阶段 + 回合数 + 牌堆/弃牌堆计数
 - **玩家面板** — 势力色条、武将名、HP 条、手牌数、装备、距离标记（⚔可攻击 / ✖不可）
 - **状态显示** — 判定区延时锦囊⚠、铁索连环🔗、翻面🔄
@@ -62,7 +59,7 @@
 - **弃牌阶段** — 人类玩家弹窗选择弃牌（带倒计时兜底）
 - **军争机制** — 酒、火杀/雷杀、铁索连环传导、藤甲
 
-### 🧠 武将技能（已完整实现）
+### 🧠 武将技能
 - **国色** — 方块牌当乐不思蜀 | **断粮** — 黑色牌当兵粮寸断（距离≤2）
 - **奇袭** — 黑色牌当过河拆桥 | **神速** — 跳过阶段视为使用杀
 - **苦肉** — 失去体力+濒死检查+摸牌 | **借刀杀人** — 令他人出杀或交武器
@@ -71,22 +68,28 @@
 ### 🤖 AI 系统
 - 🟢 **简单** — 随机出牌
 - 🟡 **普通** — 基础策略 + 转化技能（国色/断粮/奇袭/神速/苦肉）+ 借刀杀人
-- 🔴 **困难** — 嘲讽值系统 + 局势评估 + 综合攻击价值计算 + 身份推断
+- 🔴 **困难** — 目标威胁评估、局势分析和综合攻击评分
 
 ## 📥 安装与运行
 
-### 方式一：直接下载（Windows）
+### 方式一：直接下载（Apple Silicon Mac）
 
-无需安装 Python，双击即可运行：
+从发布页下载可执行文件，打开「终端」运行下面的命令。若文件存放在其他目录，在第一行使用实际目录。[Mac 下载与校验文件](https://github.com/Nevergoodstudy/sanguosha-zhongduanban/releases/tag/macos-2026.11.26)
 
-👉 [下载最新版 sanguosha.exe](https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban/releases/latest)
+```sh
+cd ~/Downloads
+chmod +x sanguosha-4.0.0-macos-arm64
+./sanguosha-4.0.0-macos-arm64
+```
+
+进入主菜单后选「练习局」。Windows、Linux 和 Intel Mac 可按下方方式运行源码或在目标平台构建。
 
 ### 方式二：源码运行
 
 **系统要求：** Python 3.10+ / Windows / macOS / Linux / 支持 UTF-8 的终端
 
 ```bash
-git clone https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban.git
+git clone https://github.com/Nevergoodstudy/sanguosha-zhongduanban.git
 cd sanguosha-zhongduanban
 pip install -e .
 python main.py
@@ -94,19 +97,33 @@ python main.py
 
 ### 方式三：自行构建
 
+在目标平台安装 Python 3.12。Apple Silicon 上先确认 Python 以 arm64 运行。
+
 ```bash
-pip install pyinstaller
-python build.py            # 生成 dist/sanguosha.exe (单文件)
-python build.py --onedir   # 目录模式
+python -m pip install ".[build]"
+python build.py --name sanguosha-4.0.0-macos-arm64
+python tools/macos_smoke.py dist/sanguosha-4.0.0-macos-arm64
 ```
+
+上面的最后一条命令验证 arm64、签名和终端启动。构建脚本先使用独立临时目录，再将成功产物放入 `dist/`，已存在的同名产物会保留。使用 `--output-dir` 指向新目录，或用 `--name` 指定新名称。Windows 产物带 `.exe` 后缀，使用 `--onedir` 可构建目录模式。
+
+构建 Python 发行包时，先安装 `build`，再在仓库根目录运行 `pyproject-build`。仓库里的 `build.py` 会占用该目录下的 `python -m build` 入口。
 
 ### 其他模式
 
+在主菜单选择「练习局」即可体验出杀、出闪、弃牌和结算。数字键选择对应手牌，Tab 切换焦点，Enter 确认，E 结束出牌。对局结算后可以查看战报，主菜单会保留最近一局的入口。
+
 ```bash
-python main.py --server              # 启动 WebSocket 服务端 (0.0.0.0:8765)
-python main.py --connect HOST:PORT   # 连接到服务端
-python main.py --replay FILE         # 回放存档
+python main.py --latest-report > report.json  # 导出最近一局
+python main.py --replay report.json           # 阅读战报或打开旧回放
 python main.py --lang en_US          # 英文界面
+```
+
+局域网内测由房主显式开启。先在本机使用下面的地址验证，跨设备时把地址改为房主的局域网 IP。
+
+```bash
+python main.py --server 127.0.0.1:8765 --lan-preview
+python main.py --connect 127.0.0.1:8765 --name 玩家一
 ```
 
 ## 📖 游戏规则
@@ -226,11 +243,13 @@ sanguosha/
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -v              # 全量测试 (1503 用例)
+python -m pytest tests/ -v             # 全量测试
 python -m pytest --cov=game --cov=ai    # 含覆盖率报告
 python -m ruff check .                  # 静态分析
 python -m mypy game ai net              # 类型检查
 ```
+
+CI 与 pre-commit 使用 Ruff 0.17.6。语法及未定义名称检查会阻止合入，完整 Ruff 风格检查、格式检查和 MyPy 检查作为已有问题的报告。
 
 ### 扩展武将
 
@@ -315,9 +334,17 @@ python -m mypy game ai net              # 类型检查
 ### v1.x (2024-2025)
 - 军争机制、规则闭环、AI 增强、初始版本
 
-## 📄 许可证
+## 文档
 
-本项目仅供学习和娱乐目的。三国杀是游卡桌游的注册商标。
+- [Mac 改进计划与验收](docs/macos-improvement-plan.md)
+- [项目审查报告](docs/project-review-2026-11-24.md)
+- [开发与调研资料](docs/research/README.md)
+- [项目架构](ARCHITECTURE.md)
+- [更新记录](CHANGELOG.md)
+
+## 项目声明
+
+这是独立的社区项目。项目元数据沿用 MIT 声明，现有仓库未提供独立的 LICENSE 文件。三国杀为游卡桌游的商标。
 
 ## 🤝 贡献
 

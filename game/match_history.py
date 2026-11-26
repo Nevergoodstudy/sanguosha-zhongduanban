@@ -23,15 +23,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import time
 from dataclasses import asdict, dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+if TYPE_CHECKING:
+    from .engine import GameEngine
 
 logger = logging.getLogger(__name__)
 
 # 默认存储路径
-_DEFAULT_PATH = Path(__file__).parent.parent / "data" / "match_history.json"
+_LEGACY_PATH = Path(__file__).parent.parent / "data" / "match_history.json"
 
 
 @dataclass(slots=True)
@@ -61,6 +69,9 @@ class MatchResult:
     duration_seconds: float = 0.0
     players: list[PlayerStat] = field(default_factory=list)
     mode: str = "standard"  # standard / custom / network
+    game_version: str = ""
+    game_seed: int | None = None
+    events: list[dict[str, int | str]] = field(default_factory=list)
 
 
 class MatchHistory:
@@ -71,9 +82,11 @@ class MatchHistory:
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self._path = Path(path) if path else _DEFAULT_PATH
+        self._path = Path(path) if path else self._default_path()
+        self._legacy_path = _LEGACY_PATH if path is None else self._path
         self._records: list[MatchResult] = []
         self._next_id: int = 1
+        self._unreadable = False
 
     @property
     def records(self) -> list[MatchResult]:
@@ -81,11 +94,13 @@ class MatchHistory:
 
     def load(self) -> None:
         """从文件加载历史记录。"""
-        if not self._path.exists():
+        self._unreadable = False
+        source = self._path if self._path.exists() else self._legacy_path
+        if not source.exists():
             self._records = []
             return
         try:
-            with open(self._path, encoding="utf-8") as f:
+            with source.open(encoding="utf-8") as f:
                 data = json.load(f)
             self._records = []
             for entry in data.get("matches", []):
@@ -93,20 +108,47 @@ class MatchHistory:
                 result = MatchResult(**entry, players=players)
                 self._records.append(result)
             self._next_id = data.get("next_id", len(self._records) + 1)
-        except (json.JSONDecodeError, TypeError, KeyError) as e:
-            logger.warning("对战历史文件损坏，将重置: %s", e)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+            logger.warning("无法读取对战历史 %s: %s", source, e)
             self._records = []
+            self._unreadable = True
 
     def save(self) -> None:
         """保存历史记录到文件。"""
+        if self._unreadable:
+            raise OSError(f"Cannot overwrite unreadable match history: {self._path}")
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "version": "1.0",
+            "version": "1.1",
             "next_id": self._next_id,
             "matches": [asdict(r) for r in self._records],
         }
-        with open(self._path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=self._path.parent, delete=False
+        ) as file:
+            temporary = Path(file.name)
+            try:
+                json.dump(data, file, indent=2, ensure_ascii=False)
+                file.close()
+                temporary.replace(self._path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _default_path() -> Path:
+        configured = os.environ.get("SANGUOSHA_DATA_HOME")
+        if configured:
+            return Path(configured) / "match_history.json"
+        if sys.platform == "darwin":
+            return Path.home() / "Library" / "Application Support" / "Sanguosha" / "match_history.json"
+        if sys.platform == "win32":
+            return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sanguosha" / "match_history.json"
+        directory = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        return directory / "sanguosha" / "match_history.json"
+
+    def latest(self) -> MatchResult | None:
+        self.load()
+        return self._records[-1] if self._records else None
 
     def record(self, result: MatchResult) -> str:
         """记录一局游戏结果。
@@ -199,3 +241,41 @@ class MatchHistory:
         if winner == "spy":
             return identity == "spy"
         return False
+
+
+def record_completed_match(engine: GameEngine, *, practice: bool) -> tuple[MatchResult, bool]:
+    """保存已结算的本地对局，写盘失败时仍可显示本局战报。"""
+    try:
+        game_version = version("sanguosha")
+    except PackageNotFoundError:
+        game_version = "source"
+
+    result = MatchResult(
+        match_id=uuid4().hex,
+        winner=engine.winner_identity.value if engine.winner_identity else "",
+        player_count=len(engine.players),
+        rounds=engine.round_count,
+        players=[
+            PlayerStat(
+                name=player.name,
+                hero=player.hero.name,
+                identity=player.identity.value,
+                is_ai=player.is_ai,
+                survived=player.is_alive,
+            )
+            for player in engine.players
+        ],
+        mode="practice" if practice else "standard",
+        game_version=game_version,
+        game_seed=engine.game_seed,
+        events=list(engine.match_events),
+    )
+    history = MatchHistory()
+    history.load()
+    history.record(result)
+    try:
+        history.save()
+    except OSError:
+        logger.exception("无法保存本局战报")
+        return result, False
+    return result, True

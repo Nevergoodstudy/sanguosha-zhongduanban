@@ -6,8 +6,10 @@ Uses app.run_test() to actually drive screens headlessly with Pilot.
 import pytest
 from textual.widgets import Button, Select, Static
 
+from game.match_history import MatchHistory
+from i18n import get_locale, set_locale
 from ui.textual_ui.app import SanguoshaApp
-from ui.textual_ui.screens.game_over import GameOverScreen
+from ui.textual_ui.screens.game_over import GameOverScreen, MatchReportScreen
 from ui.textual_ui.screens.game_setup import GameSetupScreen
 from ui.textual_ui.screens.main_menu import MainMenuScreen
 from ui.textual_ui.screens.rules import RulesScreen
@@ -65,12 +67,12 @@ class TestMainMenuScreen:
     """主菜单界面测试"""
 
     @pytest.mark.asyncio
-    async def test_menu_has_three_buttons(self):
-        """主菜单有 3 个按钮"""
+    async def test_menu_has_practice_and_history_buttons(self):
+        """主菜单提供练习和战报入口"""
         app = SanguoshaApp()
         async with app.run_test(size=(80, 24)) as pilot:
-            buttons = app.screen.query(Button)
-            assert len(buttons) == 3
+            assert app.screen.query_one("#btn-practice", Button).display
+            assert app.screen.query_one("#btn-history", Button).display
 
     @pytest.mark.asyncio
     async def test_menu_has_title(self):
@@ -196,6 +198,57 @@ class TestGameSetupScreen:
 
 
 # ==================== GameOverScreen ====================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("size", "locale"), [((80, 24), "zh_CN"), ((120, 40), "en_US")]
+)
+async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monkeypatch, request):
+    request.addfinalizer(lambda locale=get_locale(): set_locale(locale))
+    set_locale(locale)
+    monkeypatch.setenv("SANGUOSHA_DATA_HOME", str(tmp_path))
+    app = SanguoshaApp()
+    async with app.run_test(size=size) as pilot:
+        await pilot.press("tab", "enter")
+        await pilot.pause()
+        assert app.screen.focused.id == "hero-0"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("1", "enter")
+        await pilot.pause()
+        assert not app._engine.players[1].get_cards_by_name("闪")
+        await pilot.press("e")
+        await pilot.pause()
+        assert app.screen.query_one("#discard-title")
+        await pilot.press(
+            "enter", "tab", "enter", "tab", "enter",
+            "shift+tab", "shift+tab", "shift+tab", "enter",
+        )
+        await pilot.pause()
+        assert app.screen.query_one("#btn-confirm")
+        await pilot.press("enter")
+        await pilot.pause(0.6)
+        hand = app._engine.human_player.hand
+        strike_index = next(i for i, card in enumerate(hand) if card.name == "杀")
+        await pilot.press(str(strike_index + 1), "enter")
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverScreen)
+        assert app.screen.focused.id == "btn-again"
+        await pilot.press("tab", "enter")
+        await pilot.pause()
+        assert isinstance(app.screen, MatchReportScreen)
+        assert app.screen.report.winner == "lord"
+        assert any(event["kind"] == "game_over" for event in app.screen.report.events)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverScreen)
+        await pilot.press("shift+tab", "enter")
+        await pilot.pause()
+        assert app.screen.focused.id == "hero-0"
+    report = MatchHistory().latest()
+    assert report.winner == "lord"
+    assert report.game_seed == 42
 
 
 class TestGameOverScreen:

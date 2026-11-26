@@ -39,12 +39,25 @@ class MainMenuScreen(Screen):
         yield Container(
             Static(_t("ui.menu.title"), id="title"),
             Button(_t("ui.menu.start"), id="btn-start", classes="menu-btn", variant="success"),
+            Button(_t("ui.menu.practice"), id="btn-practice", classes="menu-btn"),
+            Button(_t("ui.menu.history"), id="btn-history", classes="menu-btn"),
             Button(_t("ui.menu.rules"), id="btn-rules", classes="menu-btn", variant="primary"),
             Button(_t("ui.menu.quit"), id="btn-quit", classes="menu-btn", variant="error"),
             id="menu-box",
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-practice":
+            from .hero_select import HeroSelectScreen
+
+            self.app.push_screen(HeroSelectScreen(2, "easy", practice=True))
+            return
+        if event.button.id == "btn-history":
+            from .game_over import MatchReportScreen
+            from game.match_history import MatchHistory
+
+            self.app.push_screen(MatchReportScreen(MatchHistory().latest()))
+            return
         if event.button.id == "btn-start":
             from .game_setup import GameSetupScreen
 

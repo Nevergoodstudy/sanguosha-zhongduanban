@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from i18n import t as _t
 
+from .enums import GamePhase
+
 if TYPE_CHECKING:
     from .card import Card
     from .engine import GameEngine
@@ -81,7 +83,7 @@ class PlayCardAction(GameAction):
     """出牌动作"""
 
     action_type: ActionType = field(default=ActionType.PLAY_CARD, init=False)
-    card_id: int = 0
+    card_id: int | str = 0
     target_ids: list[int] = field(default_factory=list)
 
     def validate(self, engine: GameEngine) -> tuple[bool, str]:
@@ -93,10 +95,13 @@ class PlayCardAction(GameAction):
         if engine.current_player.id != self.player_id:
             return False, _t("error.not_your_turn")
 
+        if engine.phase != GamePhase.PLAY:
+            return False, _t("exc.invalid_phase")
+
         # 检查卡牌是否存在
         card = None
         for c in player.hand:
-            if id(c) == self.card_id or getattr(c, "id", None) == self.card_id:
+            if id(c) == self.card_id or c.id == self.card_id:
                 card = c
                 break
 
@@ -106,19 +111,19 @@ class PlayCardAction(GameAction):
         return True, ""
 
     def execute(self, engine: GameEngine) -> bool:
-        valid, msg = self.validate(engine)
+        valid, _ = self.validate(engine)
         if not valid:
             return False
 
         player = engine.get_player_by_id(self.player_id)
-        card = None
-        for c in player.hand:
-            if id(c) == self.card_id or getattr(c, "id", None) == self.card_id:
-                card = c
-                break
-
-        targets = [engine.get_player_by_id(tid) for tid in self.target_ids]
-        targets = [t for t in targets if t is not None]
+        card = next(c for c in player.hand if id(c) == self.card_id or c.id == self.card_id)
+        targets = []
+        for target_id in self.target_ids:
+            target = engine.get_player_by_id(target_id)
+            if target is None:
+                engine.log_event("error", _t("exc.invalid_target"))
+                return False
+            targets.append(target)
 
         return engine.use_card(player, card, targets)
 

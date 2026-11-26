@@ -241,12 +241,13 @@ class Deck:
     管理游戏中的牌堆和弃牌堆
     """
 
-    def __init__(self, data_path: str | None = None):
+    def __init__(self, data_path: str | None = None, *, rng: random.Random | None = None):
         """初始化牌堆
 
         Args:
             data_path: 卡牌数据文件路径
         """
+        self.rng = rng if rng is not None else random.Random()
         self.draw_pile: list[Card] = []  # 摸牌堆
         self.discard_pile: list[Card] = []  # 弃牌堆
         self._all_cards: list[Card] = []  # 所有卡牌副本
@@ -327,7 +328,7 @@ class Deck:
 
     def shuffle(self) -> None:
         """洗牌"""
-        random.shuffle(self.draw_pile)
+        self.rng.shuffle(self.draw_pile)
 
     def draw(self, count: int = 1) -> list[Card]:
         """摸牌

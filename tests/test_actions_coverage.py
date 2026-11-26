@@ -9,6 +9,7 @@ from game.actions import (
     RequestType,
     UseSkillAction,
 )
+from game.enums import GamePhase
 
 
 class TestActionType:
@@ -38,6 +39,7 @@ class TestRequestType:
 class TestPlayCardAction:
     def _make_engine(self, player=None, current_player_id=0):
         engine = MagicMock()
+        engine.phase = GamePhase.PLAY
         if player:
             engine.get_player_by_id.return_value = player
             engine.current_player = MagicMock()

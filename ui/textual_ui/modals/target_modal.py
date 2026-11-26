@@ -12,10 +12,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Button, Static
 
 from game.player import Identity
+from i18n import card_name, identity_name
+from i18n import t as _t
 from ui.textual_ui.modals.base import AnimatedModalScreen
 
 if TYPE_CHECKING:
@@ -24,6 +27,11 @@ if TYPE_CHECKING:
 
 class TargetSelectModal(AnimatedModalScreen[Optional[int]]):
     """目标选择弹窗 — 点击目标按钮选中"""
+
+    BINDINGS = [Binding("escape", "cancel", show=False)]
+
+    def action_cancel(self) -> None:
+        self.dismiss()
 
     DEFAULT_CSS = """
     TargetSelectModal {
@@ -50,46 +58,49 @@ class TargetSelectModal(AnimatedModalScreen[Optional[int]]):
         width: 100%;
         margin: 0 0 1 0;
     }
+    TargetSelectModal Button:focus {
+        text-style: bold reverse;
+    }
     TargetSelectModal #btn-cancel-target {
         width: 100%;
         margin-top: 1;
     }
     """
 
-    def __init__(self, targets: list, prompt: str = "选择目标"):
+    def __init__(self, targets: list, prompt: str | None = None):
         """Args:
         targets: Player 对象列表
         prompt: 提示文字
         """
         super().__init__()
         self._targets = targets
-        self._prompt = prompt
+        self._prompt = prompt or _t("ui.modal.target")
 
     def compose(self) -> ComposeResult:
         with Container(id="target-container"):
-            yield Static(f"🎯 {self._prompt}", id="target-title")
+            yield Static(self._prompt, id="target-title", markup=False)
             for i, t in enumerate(self._targets):
                 hero_name = t.hero.name if t.hero else "?"
                 hp_bar = "●" * t.hp + "○" * (t.max_hp - t.hp)
                 # 身份信息（主公公开）
                 identity_str = ""
                 if hasattr(t, "identity") and t.identity == Identity.LORD:
-                    identity_str = " [主公]"
+                    identity_str = f" · {identity_name(Identity.LORD.value)}"
                 # 装备简要
                 equip_parts = []
                 if hasattr(t, "equipment"):
                     if t.equipment.weapon:
-                        equip_parts.append(f"⚔{t.equipment.weapon.name}")
+                        equip_parts.append(f"⚔{card_name(t.equipment.weapon.name)}")
                     if t.equipment.armor:
-                        equip_parts.append(f"🛡{t.equipment.armor.name}")
+                        equip_parts.append(f"🛡{card_name(t.equipment.armor.name)}")
                 equip_str = " ".join(equip_parts)
                 label = (
                     f"{t.name} ({hero_name}){identity_str}  "
                     f"{hp_bar} {t.hp}/{t.max_hp}  "
-                    f"手牌:{t.hand_count}  {equip_str}"
+                    f'{_t("ui.modal.hand_count", count=t.hand_count)}  {equip_str}'
                 )
                 yield Button(label, id=f"target-{i}", classes="target-btn", variant="primary")
-            yield Button("❌ 取消", id="btn-cancel-target", variant="error")
+            yield Button(_t("ui.modal.cancel"), id="btn-cancel-target", variant="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id or ""

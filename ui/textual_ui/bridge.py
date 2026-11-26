@@ -1,19 +1,16 @@
 """TextualUIBridge — 引擎 ↔ Textual 桥接层
 
 实现 GameUI Protocol，将引擎调用转发到 Textual 界面。
-所有需要人类玩家交互的方法通过 ModalScreen + threading.Event 实现
-线程安全的阻塞等待。
+所有需要人类玩家交互的方法由游戏屏幕管理等待及取消。
 
 线程模型:
   worker 线程 (game loop) → call_from_thread(push_screen(Modal)) → UI 线程
-  UI 线程 → user clicks → dismiss(result) → callback sets Event
-  worker 线程 ← Event.wait() ← 获取结果
+  UI 线程 → user clicks → dismiss(result) → callback completes Future
+  worker 线程 ← Future.result() ← 获取结果
 """
 
 from __future__ import annotations
 
-import random
-import threading
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -39,30 +36,8 @@ class TextualUIBridge:
     #  内部工具：线程安全 modal 调度                                      #
     # ------------------------------------------------------------------ #
 
-    def _push_modal_and_wait(self, modal_factory, *, timeout: float = 300):
-        """通用 modal 调度：在 UI 线程 push ModalScreen 并阻塞 worker 线程等待结果。
-
-        Args:
-            modal_factory: callable，无参，返回 ModalScreen 实例
-            timeout: 等待秒数
-
-        Returns:
-            dismiss 传回的结果（任意类型），超时返回 None
-        """
-        result_holder = [None]
-        event = threading.Event()
-
-        def _on_dismiss(result):
-            result_holder[0] = result
-            event.set()
-
-        def _push():
-            modal = modal_factory()
-            self._screen.app.push_screen(modal, callback=_on_dismiss)
-
-        self._screen.app.call_from_thread(_push)
-        event.wait(timeout=timeout)
-        return result_holder[0]
+    def _push_modal_and_wait(self, modal_factory, *, timeout: float | None = 300):
+        return self._screen.wait_for_modal(modal_factory, timeout=timeout)
 
     # ================================================================== #
     #  GameUI Protocol — 菜单（由 Textual Screens 处理，此处为 fallback）  #
@@ -123,7 +98,11 @@ class TextualUIBridge:
             return None
         from ui.textual_ui.modals.response_modal import ShanResponseModal
 
-        result = self._push_modal_and_wait(lambda: ShanResponseModal(cards=shan_cards), timeout=20)
+        practice = self._screen.practice
+        result = self._push_modal_and_wait(
+            lambda: ShanResponseModal(cards=shan_cards, countdown=0 if practice else None),
+            timeout=None if practice else 20,
+        )
         if result:
             return shan_cards[0]
         return None
@@ -135,7 +114,11 @@ class TextualUIBridge:
             return None
         from ui.textual_ui.modals.response_modal import ShaResponseModal
 
-        result = self._push_modal_and_wait(lambda: ShaResponseModal(cards=sha_cards), timeout=20)
+        practice = self._screen.practice
+        result = self._push_modal_and_wait(
+            lambda: ShaResponseModal(cards=sha_cards, countdown=0 if practice else None),
+            timeout=None if practice else 20,
+        )
         if result:
             return sha_cards[0]
         return None
@@ -147,9 +130,12 @@ class TextualUIBridge:
             return None
         from ui.textual_ui.modals.response_modal import TaoResponseModal
 
+        practice = self._screen.practice
         result = self._push_modal_and_wait(
-            lambda: TaoResponseModal(dying_name=dying.name, cards=tao_cards),
-            timeout=25,
+            lambda: TaoResponseModal(
+                dying_name=dying.name, cards=tao_cards, countdown=0 if practice else None
+            ),
+            timeout=None if practice else 25,
         )
         if result:
             return tao_cards[0]
@@ -187,13 +173,13 @@ class TextualUIBridge:
         from ui.textual_ui.modals.card_pick_modal import CardPickModal
 
         result = self._push_modal_and_wait(
-            lambda: CardPickModal(target=target, all_cards=all_cards),
+            lambda: CardPickModal(target=target, all_cards=all_cards, rng=self._screen.engine.rng),
             timeout=30,
         )
         if result is not None and 0 <= result < len(all_cards):
             return all_cards[result]
         # fallback: 若用户取消或超时，随机选（保持游戏不卡住）
-        return random.choice(all_cards)
+        return self._screen.engine.rng.choice(all_cards)
 
     def choose_suit(self, player):
         """选择花色 → SuitSelectModal"""

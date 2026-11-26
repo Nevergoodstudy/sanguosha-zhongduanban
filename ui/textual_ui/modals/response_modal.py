@@ -18,10 +18,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.timer import Timer
 from textual.widgets import Button, Static
 
+from i18n import card_name
+from i18n import t as _t
 from ui.textual_ui.modals.base import AnimatedModalScreen
 
 if TYPE_CHECKING:
@@ -34,6 +37,8 @@ class ResponseModalBase(AnimatedModalScreen[bool]):
     半透明背景覆盖，居中弹窗框，可选倒计时自动拒绝。
     子类只需定义 title_text / body_text / confirm_label / reject_label。
     """
+
+    BINDINGS = [Binding("escape", "reject", show=False)]
 
     DEFAULT_CSS = """
     ResponseModalBase {
@@ -74,6 +79,9 @@ class ResponseModalBase(AnimatedModalScreen[bool]):
         height: auto;
         margin-top: 1;
     }
+    ResponseModalBase Button:focus {
+        text-style: bold reverse;
+    }
     ResponseModalBase .btn-row Button {
         width: 1fr;
         margin: 0 1;
@@ -81,51 +89,44 @@ class ResponseModalBase(AnimatedModalScreen[bool]):
     """
 
     # 子类可覆盖
-    title_text: str = "请选择"
-    body_text: str = ""
-    confirm_label: str = "✅ 确认"
-    reject_label: str = "❌ 放弃"
-    countdown_seconds: int = 0  # 0 表示不倒计时
-    cards_info: str = ""  # 可选：显示可用卡牌信息
+    title_key = "ui.modal.choose"
+    body_key: str | None = None
+    confirm_key = "ui.modal.confirm"
+    countdown_seconds = 0
 
     def __init__(
         self,
         title: str = "",
         body: str = "",
         cards: list | None = None,
-        countdown: int = 0,
+        countdown: int | None = None,
     ):
         super().__init__()
-        if title:
-            self.title_text = title
-        if body:
-            self.body_text = body
-        if countdown > 0:
-            self.countdown_seconds = countdown
+        self.title_text = title or _t(self.title_key)
+        self.body_text = body or (_t(self.body_key) if self.body_key else "")
+        self.countdown_seconds = self.countdown_seconds if countdown is None else countdown
         self._remaining = self.countdown_seconds
         self._countdown_timer: Timer | None = None
-        # 卡牌信息
-        if cards:
-            info_parts = []
-            for c in cards:
-                suit_icon = {"spade": "♠", "heart": "♥", "club": "♣", "diamond": "♦"}.get(
-                    getattr(c.suit, "value", ""), "?"
-                )
-                info_parts.append(f"{suit_icon}{c.number_str} {c.name}")
-            self.cards_info = "  ".join(info_parts)
+        self.cards_info = "  ".join(
+            f"{card.suit.symbol}{card.number_str} {card_name(card.name)}" for card in (cards or ())
+        )
 
     def compose(self) -> ComposeResult:
         with Container(id="modal-container"):
-            yield Static(self.title_text, id="modal-title")
+            yield Static(self.title_text, id="modal-title", markup=False)
             if self.body_text:
-                yield Static(self.body_text, id="modal-body")
+                yield Static(self.body_text, id="modal-body", markup=False)
             if self.cards_info:
-                yield Static(f"可用: {self.cards_info}", id="modal-cards-info")
+                yield Static(
+                    _t("ui.modal.cards_available", cards=self.cards_info),
+                    id="modal-cards-info",
+                    markup=False,
+                )
             if self.countdown_seconds > 0:
-                yield Static(f"⏱ {self._remaining}s", id="modal-countdown")
+                yield Static(_t("ui.play.countdown", seconds=self._remaining), id="modal-countdown")
             with Horizontal(classes="btn-row"):
-                yield Button(self.confirm_label, id="btn-confirm", variant="success")
-                yield Button(self.reject_label, id="btn-reject", variant="error")
+                yield Button(_t(self.confirm_key), id="btn-confirm", variant="success")
+                yield Button(_t("ui.modal.pass"), id="btn-reject", variant="error")
 
     def on_mount(self) -> None:
         super().on_mount()  # 淡入动画
@@ -137,7 +138,7 @@ class ResponseModalBase(AnimatedModalScreen[bool]):
         self._remaining -= 1
         try:
             cd_widget = self.query_one("#modal-countdown", Static)
-            cd_widget.update(f"⏱ {self._remaining}s")
+            cd_widget.update(_t("ui.play.countdown", seconds=self._remaining))
         except Exception:
             pass
         if self._remaining <= 0:
@@ -145,43 +146,44 @@ class ResponseModalBase(AnimatedModalScreen[bool]):
                 self._countdown_timer.stop()
             self.dismiss(False)  # 超时自动拒绝
 
+    def action_reject(self) -> None:
+        self._answer(False)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        self._answer(event.button.id == "btn-confirm")
+
+    def _answer(self, accepted: bool) -> None:
         if self._countdown_timer:
             self._countdown_timer.stop()
-        if event.button.id == "btn-confirm":
-            self.dismiss(True)
-        else:
-            self.dismiss(False)
+        self.dismiss(accepted)
 
 
 class ShanResponseModal(ResponseModalBase):
-    """闪响应弹窗: 你被【杀】攻击，是否出【闪】？"""
+    """Respond to a Strike with Dodge."""
 
-    title_text = "⚔ 你被攻击了！"
-    body_text = "是否使用【闪】抵消？"
-    confirm_label = "🛡 出闪"
-    reject_label = "💔 不出"
+    title_key = "ui.modal.shan_title"
+    body_key = "ui.modal.shan_body"
+    confirm_key = "ui.modal.shan"
     countdown_seconds = 15
 
 
 class ShaResponseModal(ResponseModalBase):
-    """杀响应弹窗: 需要出【杀】（决斗/南蛮入侵/万箭齐发）"""
+    """Respond with Strike."""
 
-    title_text = "⚡ 需要出杀！"
-    body_text = "是否使用【杀】响应？"
-    confirm_label = "⚔ 出杀"
-    reject_label = "💔 不出"
+    title_key = "ui.modal.sha_title"
+    body_key = "ui.modal.sha_body"
+    confirm_key = "ui.modal.sha"
     countdown_seconds = 15
 
 
 class TaoResponseModal(ResponseModalBase):
-    """桃响应弹窗: 濒死求桃"""
+    """Offer Peach to a dying player."""
 
-    title_text = "💀 濒死救援！"
-    confirm_label = "🍑 使用桃"
-    reject_label = "😢 放弃"
+    title_key = "ui.modal.tao_title"
+    body_key = "ui.modal.tao_body"
+    confirm_key = "ui.modal.tao"
     countdown_seconds = 20
 
     def __init__(self, dying_name: str = "", cards=None, **kwargs):
-        body = f"{dying_name} 濒死！是否使用【桃】救援？" if dying_name else "是否使用【桃】？"
+        body = _t("ui.modal.tao_dying", name=dying_name) if dying_name else ""
         super().__init__(body=body, cards=cards, **kwargs)

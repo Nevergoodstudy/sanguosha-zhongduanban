@@ -1,8 +1,43 @@
-"""Deck integrity validation tests (P2-6)."""
+"""Deck and bundled content integrity tests."""
+
+import json
+from pathlib import Path
 
 import pytest
 
 from game.card import Card, CardSubtype, CardSuit, CardType, Deck
+from game.engine import GameEngine
+from game.skill import SkillSystem
+from game.skills import get_all_skill_handlers
+
+
+def test_bundled_content_references():
+    root = Path(__file__).resolve().parents[1]
+    engine = GameEngine()
+    skills = SkillSystem(engine)
+    handlers = get_all_skill_handlers()
+    unresolved = {
+        skill.id
+        for hero in engine.hero_repo.get_all_heroes()
+        for skill in hero.skills
+        if skill.id not in handlers and skills.get_dsl(skill.id) is None
+    }
+    assert not unresolved - {"yijue", "yajiao"}
+
+    cards = json.loads((root / "data/cards.json").read_text(encoding="utf-8"))
+    definitions = [card["id"] for group in cards.values() for card in group]
+    assert len(definitions) == len(set(definitions))
+    card_effects = json.loads((root / "data/card_effects.json").read_text(encoding="utf-8"))
+    for name, effect in card_effects.items():
+        if name.startswith("_"):
+            continue
+        for step in effect["steps"]:
+            for value in step.values():
+                if isinstance(value, dict) and "target" in value:
+                    assert value["target"] in {"self", "current"}
+    chinese = json.loads((root / "i18n/zh_CN.json").read_text(encoding="utf-8"))
+    english = json.loads((root / "i18n/en_US.json").read_text(encoding="utf-8"))
+    assert chinese.keys() == english.keys()
 
 
 class TestDeckValidation:

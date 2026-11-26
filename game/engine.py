@@ -118,9 +118,11 @@ class GameEngine:
 
         # 事件总线（核心解耦组件）
         self.event_bus: EventBus = EventBus()
+        self.event_bus.subscribe(EventType.LOG_MESSAGE, self._record_public_event)
 
         # 核心组件
-        self.deck: Deck = Deck(str(base_path / "cards.json"))
+        self.rng = random.Random()
+        self.deck: Deck = Deck(str(base_path / "cards.json"), rng=self.rng)
         self.hero_repo: HeroRepository = HeroRepository(str(base_path / "heroes.json"))
 
         # P0-4: 玩家管理 — 委托给 PlayerManager
@@ -137,6 +139,8 @@ class GameEngine:
 
         # 事件日志（保留兼容）
         self.event_log: list[GameLogEntry] = []
+        self.action_log: list[dict] = []
+        self.match_events: list[dict[str, int | str]] = []
         self.max_log_size: int = 100
 
         # UI和AI回调
@@ -195,6 +199,15 @@ class GameEngine:
             msg = event.data.get("message", "")
             if msg:
                 self.ui.show_log(msg)
+
+    def _record_public_event(self, event: GameEvent) -> None:
+        if self.round_count and (message := event.data.get("message")):
+            self.match_events.append({
+                "turn": self.round_count,
+                "phase": self.phase.value,
+                "kind": event.data.get("log_type", "log"),
+                "message": message,
+            })
 
     def set_skill_system(self, skill_system: SkillSystem) -> None:
         """设置技能系统并注册被动技能事件处理器"""
@@ -322,7 +335,8 @@ class GameEngine:
             )
 
     def setup_game(
-        self, player_count: int, human_player_index: int = 0, role_preference: str = "lord"
+        self, player_count: int, human_player_index: int = 0, role_preference: str = "lord",
+        *, seed: int | None = None,
     ) -> None:
         """设置游戏
 
@@ -336,6 +350,11 @@ class GameEngine:
 
             raise ValueError(_t("error.player_count"))
 
+        self.game_seed = seed if seed is not None else self.rng.getrandbits(32)
+        self.rng.seed(self.game_seed)
+        self.action_log.clear()
+        self.match_events.clear()
+        self.round_count = 0
         self._role_preference = role_preference
 
         # 创建玩家
@@ -383,14 +402,14 @@ class GameEngine:
 
         if role_pref == "random":
             # 完全随机分配：所有身份洗牌后按座位分配
-            random.shuffle(identities)
+            self.rng.shuffle(identities)
             for i, player in enumerate(self.players):
                 player.identity = identities[i]
         else:
             # 兼容原行为：第一个玩家固定为主公
             self.players[0].identity = identities[0]
             remaining_identities = identities[1:]
-            random.shuffle(remaining_identities)
+            self.rng.shuffle(remaining_identities)
             for i, player in enumerate(self.players[1:], 1):
                 if i - 1 < len(remaining_identities):
                     player.identity = remaining_identities[i - 1]
@@ -439,7 +458,7 @@ class GameEngine:
             AI玩家的武将选择
         """
         available_heroes = self.hero_repo.get_all_heroes()
-        random.shuffle(available_heroes)
+        self.rng.shuffle(available_heroes)
 
         choices = {}
         used_heroes = set()
@@ -652,7 +671,7 @@ class GameEngine:
     # ==================== 卡牌使用 ====================
 
     def use_card(self, player: Player, card: Card, targets: list[Player] | None = None) -> bool:
-        """使用卡牌（M1-T02: 优先通过 effect_registry 路由）
+        """提交手牌，成功通过规则校验后由结算模块消耗牌。
 
         Args:
             player: 使用者
@@ -662,12 +681,26 @@ class GameEngine:
         Returns:
             是否成功使用
         """
-        if targets is None:
-            targets = []
+        from i18n import t as _t
 
-        # 移除手牌
-        if card in player.hand:
-            player.remove_card(card)
+        if card not in player.hand:
+            self.log_event("error", _t("error.card_not_in_hand"))
+            return False
+
+        targets = targets if targets is not None else []
+        if len({target.id for target in targets}) != len(targets) or any(
+            self.get_player_by_id(target.id) is not target or not target.is_alive
+            for target in targets
+        ):
+            self.log_event("error", _t("exc.invalid_target"))
+            return False
+
+        if card.subtype == CardSubtype.DODGE or card.name == CardName.SHAN:
+            self.log_event("error", _t("error.shan_passive"))
+            return False
+        if card.subtype == CardSubtype.COUNTER:
+            self.log_event("error", _t("exc.invalid_action"))
+            return False
 
         # 杀类卡牌（普通杀/火杀/雷杀）特殊处理（含 subtype 变体）
         if card.name == CardName.SHA or card.subtype in [
@@ -689,12 +722,13 @@ class GameEngine:
         # 按子类型 fallback
         if card.subtype == CardSubtype.ALCOHOL:
             return self.card_resolver.use_jiu(player, card)
-        elif card.subtype == CardSubtype.CHAIN:
+        if card.subtype == CardSubtype.CHAIN:
             return self.card_resolver.use_tiesuo(player, card, targets)
-        elif card.is_type(CardType.EQUIPMENT):
+        if card.is_type(CardType.EQUIPMENT):
             return self.equipment_sys.equip(player, card)
 
         # 将使用的牌放入弃牌堆
+        player.remove_card(card)
         self.deck.discard([card])
         return True
 
@@ -751,7 +785,7 @@ class GameEngine:
                 # 收益锦囊且来源是敌人 → 可能无懈（如敌方无中生有）
                 if trick_card.name == CardName.WUZHONG and is_source_enemy:
                     # 随机决定是否无懈敌方的无中生有
-                    return random.random() < 0.3
+                    return self.rng.random() < 0.3
             else:
                 # 锦囊当前已被抵消，考虑反无懈
                 # 有害锦囊被抵消了，且来源是敌人 → 不反无懈（让它失效）
@@ -1059,9 +1093,11 @@ class GameEngine:
 
         # M3-T01: 统一随机种子注入与记录
         if seed is None:
-            seed = random.randint(0, 2**31 - 1)
+            seed = self.rng.getrandbits(32)
         self.game_seed = seed
-        random.seed(seed)
+        self.rng.seed(seed)
+        self.match_events.clear()
+        self.round_count = 0
         from i18n import t as _t
 
         self.log_event("system", _t("game.random_seed", seed=seed))
@@ -1075,7 +1111,7 @@ class GameEngine:
 
         # 随机选择武将
         all_heroes = self.hero_repo.get_all_heroes()
-        random.shuffle(all_heroes)
+        self.rng.shuffle(all_heroes)
 
         # 设置 AI 难度
         difficulty_map = {

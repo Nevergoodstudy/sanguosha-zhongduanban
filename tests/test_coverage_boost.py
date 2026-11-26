@@ -9,6 +9,7 @@ Covers previously untested code paths in:
   - ai/strategy.py (utility functions)
 """
 
+from random import Random
 from unittest.mock import MagicMock
 
 from game.card import Card, CardName, CardSubtype, CardSuit, CardType
@@ -38,6 +39,7 @@ def make_card(
 
 def _mock_engine():
     engine = MagicMock()
+    engine.rng = Random(42)
     engine.log_event = MagicMock()
     engine.event_bus = MagicMock()
     engine.players = []

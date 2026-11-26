@@ -44,9 +44,9 @@ class CardResolver:
         ctx = self.ctx
         if player.hp >= player.max_hp:
             ctx.log_event("error", _t("resolver.hp_full"))
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         healed = player.heal(1)
         ctx.log_event(
             "use_card",
@@ -63,6 +63,7 @@ class CardResolver:
 
         # 濒死时使用酒回复体力
         if player.is_dying:
+            player.remove_card(card)
             player.heal(1)
             ctx.log_event(
                 "use_card", _t("resolver.jiu_heal", name=player.name), source=player, card=card
@@ -71,26 +72,23 @@ class CardResolver:
             return True
 
         # 出牌阶段使用酒（本回合限一次）
-        if player.alcohol_used:
+        if not player.use_alcohol():
             ctx.log_event("error", _t("resolver.jiu_already_used", name=player.name))
-            player.draw_cards([card])
             return False
 
-        if player.use_alcohol():
-            ctx.log_event(
-                "use_card", _t("resolver.use_jiu", name=player.name), source=player, card=card
-            )
-            ctx.deck.discard([card])
-            return True
-
-        player.draw_cards([card])
-        return False
+        player.remove_card(card)
+        ctx.log_event(
+            "use_card", _t("resolver.use_jiu", name=player.name), source=player, card=card
+        )
+        ctx.deck.discard([card])
+        return True
 
     # ==================== AOE 锦囊 ====================
 
     def use_nanman(self, player: Player, card: Card) -> bool:
         """使用南蛮入侵"""
         ctx = self.ctx
+        player.remove_card(card)
         ctx.log_event(
             "use_card", _t("resolver.use_nanman", name=player.name), source=player, card=card
         )
@@ -123,6 +121,7 @@ class CardResolver:
     def use_wanjian(self, player: Player, card: Card) -> bool:
         """使用万箭齐发"""
         ctx = self.ctx
+        player.remove_card(card)
         ctx.log_event(
             "use_card", _t("resolver.use_wanjian", name=player.name), source=player, card=card
         )
@@ -156,6 +155,7 @@ class CardResolver:
     def use_taoyuan(self, player: Player, card: Card) -> bool:
         """使用桃园结义"""
         ctx = self.ctx
+        player.remove_card(card)
         ctx.log_event(
             "use_card", _t("resolver.use_taoyuan", name=player.name), source=player, card=card
         )
@@ -185,6 +185,7 @@ class CardResolver:
     def use_wuzhong(self, player: Player, card: Card) -> bool:
         """使用无中生有"""
         ctx = self.ctx
+        player.remove_card(card)
         ctx.log_event(
             "use_card", _t("resolver.use_wuzhong", name=player.name), source=player, card=card
         )
@@ -207,16 +208,16 @@ class CardResolver:
     def use_guohe(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用过河拆桥"""
         ctx = self.ctx
-        if not targets:
-            ctx.deck.discard([card])
+        if len(targets) != 1 or targets[0] is player:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
         if not target.has_any_card():
             ctx.log_event("error", _t("resolver.no_cards_dismantle", name=target.name))
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("resolver.use_guohe", player=player.name, target=target.name),
@@ -243,22 +244,21 @@ class CardResolver:
     def use_shunshou(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用顺手牵羊"""
         ctx = self.ctx
-        if not targets:
-            ctx.deck.discard([card])
+        if len(targets) != 1 or targets[0] is player:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
 
         if ctx.calculate_distance(player, target) > 1:
             ctx.log_event("error", _t("resolver.shunshou_too_far", name=target.name))
-            player.draw_cards([card])
             return False
 
         if not target.has_any_card():
             ctx.log_event("error", _t("resolver.no_cards_steal", name=target.name))
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("resolver.use_shunshou", player=player.name, target=target.name),
@@ -284,8 +284,8 @@ class CardResolver:
     def use_jiedao(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用借刀杀人"""
         ctx = self.ctx
-        if not targets or len(targets) < 2:
-            ctx.deck.discard([card])
+        if len(targets) != 2 or targets[0] is player or targets[0] is targets[1]:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         wielder = targets[0]
@@ -293,7 +293,6 @@ class CardResolver:
 
         if not wielder.equipment.weapon:
             ctx.log_event("error", _t("resolver.no_weapon", name=wielder.name))
-            player.draw_cards([card])
             return False
 
         if not ctx.is_in_attack_range(wielder, sha_target):
@@ -301,9 +300,9 @@ class CardResolver:
                 "error",
                 _t("resolver.jiedao_out_of_range", target=sha_target.name, wielder=wielder.name),
             )
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t(
@@ -351,16 +350,16 @@ class CardResolver:
     def use_huogong(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用火攻"""
         ctx = self.ctx
-        if not targets:
-            ctx.deck.discard([card])
+        if len(targets) != 1:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
-        if not target.hand:
+        if not target.hand or (target is player and player.hand == [card]):
             ctx.log_event("error", _t("resolver.huogong_no_hand", name=target.name))
-            ctx.deck.discard([card])
             return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("resolver.use_huogong", player=player.name, target=target.name),
@@ -413,14 +412,13 @@ class CardResolver:
     def use_lebusishu(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用乐不思蜀"""
         ctx = self.ctx
-        if not targets:
-            player.draw_cards([card])
+        if len(targets) != 1:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
         if target == player:
             ctx.log_event("error", _t("resolver.delay_self", card=_t("card.lebusishu")))
-            player.draw_cards([card])
             return False
 
         for c in target.judge_area:
@@ -429,9 +427,9 @@ class CardResolver:
                     "error",
                     _t("resolver.delay_exists", name=target.name, card=_t("card.lebusishu")),
                 )
-                player.draw_cards([card])
                 return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("resolver.use_lebusishu", player=player.name, target=target.name),
@@ -448,14 +446,13 @@ class CardResolver:
     def use_bingliang(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用兵粮寸断"""
         ctx = self.ctx
-        if not targets:
-            player.draw_cards([card])
+        if len(targets) != 1:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
         if target == player:
             ctx.log_event("error", _t("resolver.delay_self", card=_t("card.bingliang")))
-            player.draw_cards([card])
             return False
 
         distance = ctx.calculate_distance(player, target)
@@ -463,7 +460,6 @@ class CardResolver:
             ctx.log_event(
                 "error", _t("resolver.bingliang_too_far", name=target.name, distance=distance)
             )
-            player.draw_cards([card])
             return False
 
         for c in target.judge_area:
@@ -472,9 +468,9 @@ class CardResolver:
                     "error",
                     _t("resolver.delay_exists", name=target.name, card=_t("card.bingliang")),
                 )
-                player.draw_cards([card])
                 return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("resolver.use_bingliang", player=player.name, target=target.name),
@@ -496,9 +492,9 @@ class CardResolver:
                 ctx.log_event(
                     "error", _t("resolver.delay_exists", name=player.name, card=_t("card.shandian"))
                 )
-                player.draw_cards([card])
                 return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card", _t("resolver.use_shandian", name=player.name), source=player, card=card
         )
@@ -514,6 +510,12 @@ class CardResolver:
         if targets is None:
             targets = []
 
+        if len(targets) > 2:
+            ctx.log_event("error", _t("exc.invalid_target"))
+            return False
+
+        player.remove_card(card)
+
         # 无目标 → 重铸
         if not targets:
             ctx.log_event(
@@ -526,7 +528,7 @@ class CardResolver:
                 ctx.log_event("effect", _t("resolver.drew_cards", name=player.name, count=1))
             return True
 
-        target_names = "、".join(t.name for t in targets[:2])
+        target_names = "、".join(t.name for t in targets)
         ctx.log_event(
             "use_card",
             _t("resolver.use_tiesuo", player=player.name, targets=target_names),
@@ -534,7 +536,7 @@ class CardResolver:
             card=card,
         )
 
-        for target in targets[:2]:
+        for target in targets:
             target.toggle_chain()
             status = _t("resolver.chain_on") if target.is_chained else _t("resolver.chain_off")
             ctx.log_event(

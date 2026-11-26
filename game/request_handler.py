@@ -7,7 +7,6 @@ M1-T03: 将 engine.py 中所有 self.ui.ask_for_* 调用
 
 from __future__ import annotations
 
-import random
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -217,20 +216,20 @@ class DefaultRequestHandler(RequestHandler):
             return None
 
         if chooser.is_ai:
-            return random.choice(all_cards)
+            return self.engine.rng.choice(all_cards)
 
         ui = self._get_ui()
         if ui:
             return ui.choose_card_from_player(chooser, target)
 
-        return random.choice(all_cards)
+        return self.engine.rng.choice(all_cards)
 
     def choose_card_to_show(self, player: Player) -> Card | None:
         if not player.hand:
             return None
 
         if player.is_ai:
-            return random.choice(player.hand)
+            return self.engine.rng.choice(player.hand)
 
         ui = self._get_ui()
         if ui and hasattr(ui, "choose_card_to_show"):
@@ -258,13 +257,13 @@ class DefaultRequestHandler(RequestHandler):
         from .card import CardSuit
 
         if player.is_ai:
-            return random.choice(list(CardSuit))
+            return self.engine.rng.choice(list(CardSuit))
 
         ui = self._get_ui()
         if ui and hasattr(ui, "choose_suit"):
             return ui.choose_suit(player)
 
-        return random.choice(list(CardSuit))
+        return self.engine.rng.choice(list(CardSuit))
 
     # ---------- 观星 ----------
 

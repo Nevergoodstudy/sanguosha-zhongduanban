@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING
 
 from game.card import CardName, CardSubtype, CardType
@@ -22,34 +21,38 @@ if TYPE_CHECKING:
 class EasyStrategy:
     """简单模式策略：随机出牌"""
 
+    reached_action_limit = False
+
     def play_phase(self, player: Player, engine: GameEngine) -> None:
         """简单模式：随机出牌"""
         cfg = get_config()
         max_actions = cfg.ai_max_actions
         actions = 0
+        self.reached_action_limit = False
 
         while actions < max_actions:
             actions += 1
 
             if not player.hand:
-                break
+                return
 
             # 随机选择一张牌
-            card = random.choice(player.hand)
+            card = engine.rng.choice(player.hand)
 
             # 尝试使用
             if self._try_use_card(player, card, engine):
                 continue
 
             # 50%概率结束回合
-            if random.random() < 0.5:
-                break
+            if engine.rng.random() < 0.5:
+                return
+        self.reached_action_limit = True
 
     def choose_discard(self, player: Player, count: int, engine: GameEngine) -> list[Card]:
         """简单模式：随机弃牌"""
         if not player.hand:
             return []
-        return random.sample(player.hand, min(count, len(player.hand)))
+        return engine.rng.sample(player.hand, min(count, len(player.hand)))
 
     def should_use_qinglong(self, player: Player, target: Player, engine: GameEngine) -> bool:
         """简单模式：有杀且是敌人就继续"""
@@ -81,14 +84,14 @@ class EasyStrategy:
             if player.can_use_sha():
                 targets = engine.get_targets_in_range(player)
                 if targets:
-                    target = random.choice(targets)
+                    target = engine.rng.choice(targets)
                     return engine.use_card(player, card, [target])
 
         elif card.name in [CardName.JUEDOU, CardName.GUOHE]:
             others = engine.get_other_players(player)
             valid_targets = [t for t in others if t.has_any_card() or card.name != CardName.GUOHE]
             if valid_targets:
-                target = random.choice(valid_targets)
+                target = engine.rng.choice(valid_targets)
                 return engine.use_card(player, card, [target])
 
         elif card.name == CardName.SHUNSHOU:
@@ -97,7 +100,7 @@ class EasyStrategy:
                 t for t in others if engine.calculate_distance(player, t) <= 1 and t.has_any_card()
             ]
             if valid_targets:
-                target = random.choice(valid_targets)
+                target = engine.rng.choice(valid_targets)
                 return engine.use_card(player, card, [target])
 
         elif card.name in [CardName.NANMAN, CardName.WANJIAN]:
@@ -109,7 +112,7 @@ class EasyStrategy:
                 t for t in others if not any(c.name == CardName.LEBUSISHU for c in t.judge_area)
             ]
             if valid:
-                return engine.use_card(player, card, [random.choice(valid)])
+                return engine.use_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.BINGLIANG:
             others = engine.get_other_players(player)
@@ -120,13 +123,13 @@ class EasyStrategy:
                 and not any(c.name == CardName.BINGLIANG for c in t.judge_area)
             ]
             if valid:
-                return engine.use_card(player, card, [random.choice(valid)])
+                return engine.use_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.HUOGONG:
             others = engine.get_other_players(player)
             valid = [t for t in others if t.hand_count > 0]
             if valid:
-                return engine.use_card(player, card, [random.choice(valid)])
+                return engine.use_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.JIEDAO:
             others = engine.get_other_players(player)
@@ -141,12 +144,12 @@ class EasyStrategy:
                     and engine.is_in_attack_range(wielder, t)
                 ]
                 if sha_targets:
-                    return engine.use_card(player, card, [wielder, random.choice(sha_targets)])
+                    return engine.use_card(player, card, [wielder, engine.rng.choice(sha_targets)])
 
         elif card.name == CardName.TIESUO:
             others = [p for p in engine.get_other_players(player) if p.is_alive]
-            if others and random.random() < 0.5:
-                targets = random.sample(others, min(2, len(others)))
+            if others and engine.rng.random() < 0.5:
+                targets = engine.rng.sample(others, min(2, len(others)))
                 return engine.use_card(player, card, targets)
             else:
                 return engine.use_card(player, card)  # 重铸

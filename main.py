@@ -13,6 +13,7 @@
     - rich / textual
 """
 
+import json
 import logging
 import sys
 from importlib.metadata import version as pkg_version
@@ -50,6 +51,7 @@ def main():
         metavar="HOST:PORT",
         help="连接到服务端 (如 localhost:8765)",
     )
+    parser.add_argument("--lan-preview", action="store_true", help="启用局域网对局内测")
     parser.add_argument(
         "--name",
         default=None,
@@ -65,13 +67,14 @@ def main():
         "--replay",
         default=None,
         metavar="FILE",
-        help="回放存档文件 (JSON)",
+        help="回放战报、旧存档或压缩回放",
     )
     parser.add_argument(
         "--step",
         action="store_true",
         help="回放时逐步执行",
     )
+    parser.add_argument("--latest-report", action="store_true", help="以 JSON 导出最近一局战报")
     args = parser.parse_args()
 
     # 设置语言
@@ -80,6 +83,17 @@ def main():
     set_locale(args.lang)
 
     setup_logging(enable_console=False)
+
+    if args.latest_report:
+        from dataclasses import asdict
+        from game.match_history import MatchHistory
+
+        report = MatchHistory().latest()
+        if report is None:
+            parser.exit(1, "No completed match report.\n")
+        print(json.dumps({"format": "sanguosha-match", "version": "1.0", **asdict(report)},
+                         ensure_ascii=False, indent=2))
+        return
 
     # M4: 服务端模式
     if args.server is not None:
@@ -104,6 +118,7 @@ def main():
             allowed_origins=cfg.ws_allowed_origins,
             ssl_cert=cfg.ws_ssl_cert,
             ssl_key=cfg.ws_ssl_key,
+            lan_preview=args.lan_preview,
         )
         asyncio.run(server.start())
         return
@@ -123,11 +138,32 @@ def main():
     if args.replay is not None:
         import time as _time
 
-        from game.save_system import EnhancedReplay, load_game
+        from game.replay import ReplayPlayer
+        from game.save_system import EnhancedReplay, apply_migrations
         from ui.input_safety import safe_input
 
-        data = load_game(args.replay)
-        replay = EnhancedReplay(data)
+        with open(args.replay, "rb") as source:
+            is_gzip = source.read(2) == b"\x1f\x8b"
+        if is_gzip:
+            replay = ReplayPlayer(args.replay)
+            print(f"\u25b6 回放: {args.replay}")
+            while (event := replay.next_event()) is not None:
+                print(f"[{replay.current_index}/{replay.total_events}] "
+                      f"{event['action']} {event['result']}".rstrip())
+                if args.step:
+                    safe_input("")
+            return
+
+        with open(args.replay, encoding="utf-8") as source:
+            data = json.load(source)
+        if data.get("format") == "sanguosha-match":
+            print(f"\u25b6 回放: {args.replay}")
+            for event in data["events"]:
+                print(f"[{event['turn']} · {event['phase']}] {event['message']}")
+                if args.step:
+                    safe_input("")
+            return
+        replay = EnhancedReplay(apply_migrations(data))
         summary = replay.get_summary()
 
         print(f"\u25b6 回放: {args.replay}")

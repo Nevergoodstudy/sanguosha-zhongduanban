@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING
 
 from game.card import CardName, CardSuit, CardType
+from game.config import get_config
 from game.constants import SkillId
 
 from .strategy import (
@@ -21,6 +21,8 @@ from .strategy import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from game.card import Card
     from game.engine import GameEngine
     from game.player import Player
@@ -29,12 +31,18 @@ if TYPE_CHECKING:
 class NormalStrategy:
     """普通模式策略：基础优先级出牌"""
 
+    def __init__(
+        self, choose_target: Callable[[Player, list[Player], GameEngine], Player] | None = None
+    ) -> None:
+        self._choose_target = choose_target or self.choose_best_target
+        self.reached_action_limit = False
+
     def play_phase(self, player: Player, engine: GameEngine) -> None:
         """普通模式：基础策略"""
         # 优先级：装备 > 无中生有 > 杀 > 其他锦囊 > 技能
 
-        played = True
-        while played:
+        self.reached_action_limit = False
+        for _ in range(get_config().ai_max_actions):
             played = False
 
             # 1. 使用装备
@@ -72,7 +80,7 @@ class NormalStrategy:
                 if sha:
                     targets = self._get_attack_targets(player, engine)
                     if targets:
-                        target = self.choose_best_target(player, targets, engine)
+                        target = self._choose_target(player, targets, engine)
                         if engine.use_card(player, sha[0], [target]):
                             played = True
                             continue
@@ -180,13 +188,14 @@ class NormalStrategy:
                 usable_skills = engine.skill_system.get_usable_skills(player)
                 for skill_id in usable_skills:
                     if self._should_use_skill(player, skill_id, engine):
-                        self._use_skill_with_ai(player, skill_id, engine)
-                        played = True
-                        break
+                        if self._use_skill_with_ai(player, skill_id, engine):
+                            played = True
+                            break
 
             # 无法行动则结束
             if not played:
-                break
+                return
+        self.reached_action_limit = True
 
     def choose_discard(self, player: Player, count: int, engine: GameEngine) -> list[Card]:
         """智能弃牌"""
@@ -226,8 +235,8 @@ class NormalStrategy:
         if enemies:
             with_equip = [t for t in enemies if t.equipment.has_equipment()]
             if with_equip:
-                return random.choice(with_equip)
-            return random.choice(enemies)
+                return engine.rng.choice(with_equip)
+            return engine.rng.choice(enemies)
         return None
 
     def _choose_steal_target(self, player: Player, engine: GameEngine) -> Player | None:
@@ -239,7 +248,7 @@ class NormalStrategy:
         enemies = [t for t in valid if is_enemy(player, t)]
 
         if enemies:
-            return random.choice(enemies)
+            return engine.rng.choice(enemies)
         return None
 
     def _choose_duel_target(self, player: Player, engine: GameEngine) -> Player | None:
@@ -405,7 +414,7 @@ class NormalStrategy:
         elif skill_id == SkillId.RENDE:
             friends = get_friends(player, engine)
             if friends and player.hand_count > 2:
-                target = random.choice(friends)
+                target = engine.rng.choice(friends)
                 cards = [player.hand[0]]
                 return engine.skill_system.use_skill(
                     skill_id, player, targets=[target], cards=cards
@@ -414,8 +423,8 @@ class NormalStrategy:
         elif skill_id == SkillId.FANJIAN:
             enemies = [p for p in engine.get_other_players(player) if is_enemy(player, p)]
             if enemies and player.hand:
-                target = random.choice(enemies)
-                card = random.choice(player.hand)
+                target = engine.rng.choice(enemies)
+                card = engine.rng.choice(player.hand)
                 return engine.skill_system.use_skill(
                     skill_id, player, targets=[target], cards=[card]
                 )
@@ -459,7 +468,7 @@ class NormalStrategy:
             ]
             if black_cards and enemies:
                 card = pick_least_valuable(black_cards, player)
-                target = self._choose_dismount_target_from(enemies)
+                target = self._choose_dismount_target_from(enemies, engine)
                 if target:
                     return engine.skill_system.use_skill(
                         skill_id, player, targets=[target], cards=[card]
@@ -473,7 +482,7 @@ class NormalStrategy:
                 p for p in engine.get_other_players(player) if is_enemy(player, p) and p.is_alive
             ]
             if enemies:
-                target = self.choose_best_target(player, enemies, engine)
+                target = self._choose_target(player, enemies, engine)
                 if target:
                     return engine.skill_system.use_skill(skill_id, player, targets=[target])
 
@@ -486,9 +495,9 @@ class NormalStrategy:
         enemies.sort(key=lambda t: t.hand_count + t.hp, reverse=True)
         return enemies[0]
 
-    def _choose_dismount_target_from(self, enemies: list[Player]) -> Player | None:
+    def _choose_dismount_target_from(self, enemies: list[Player], engine: GameEngine) -> Player | None:
         """从敌人列表选择过河拆桥/奇袭目标"""
         with_equip = [t for t in enemies if t.equipment.has_equipment()]
         if with_equip:
-            return random.choice(with_equip)
-        return random.choice(enemies) if enemies else None
+            return engine.rng.choice(with_equip)
+        return engine.rng.choice(enemies) if enemies else None

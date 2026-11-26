@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import random
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -90,7 +89,7 @@ def handle_fankui(player: Player, engine: GameEngine, source: Player = None, **k
 
     all_cards = source.get_all_cards()
     if all_cards:
-        card = random.choice(all_cards)
+        card = engine.rng.choice(all_cards)
         if card in source.hand:
             source.remove_card(card)
         else:
@@ -195,7 +194,7 @@ def handle_tuxi(player: Player, engine: GameEngine, targets: list = None, **kwar
 
     for target in targets:
         if target.hand:
-            card = random.choice(target.hand)
+            card = engine.rng.choice(target.hand)
             target.remove_card(card)
             player.draw_cards([card])
             engine.log_event("skill", _t("skill_msg.tuxi", name=player.name, target=target.name))

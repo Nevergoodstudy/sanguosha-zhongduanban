@@ -159,6 +159,22 @@ class TestFullBattleMatrix:
 class TestDeterminism:
     """相同种子 → 相同结果"""
 
+    def test_interleaved_games_preserve_seeded_events(self):
+        expected = _make_engine(4, seed=42)
+        expected.run_headless_battle(max_rounds=30)
+        actual = _make_engine(4, seed=42)
+        other = _make_engine(8, seed=12345, diff="hard")
+        for _ in range(30 * len(actual.players)):
+            if actual.is_game_over():
+                break
+            actual.run_headless_turn()
+            actual.next_turn()
+            if not other.is_game_over():
+                other.run_headless_turn()
+                other.next_turn()
+        assert actual.match_events == expected.match_events
+        assert actual.winner_identity == expected.winner_identity
+
     @pytest.mark.parametrize("pc", ALL_PLAYER_COUNTS)
     def test_same_seed_same_rounds(self, pc):
         """相同种子的回合数一致"""

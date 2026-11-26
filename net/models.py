@@ -54,10 +54,11 @@ class RoomJoinData(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    player_name: str = Field(min_length=1, max_length=20)
+    player_name: str = Field(default="玩家", min_length=1, max_length=20)
     room_id: str = Field(min_length=1, max_length=36)
     reconnect: bool = False
     last_seq: int = Field(default=0, ge=0)
+    token: str = Field(default="", max_length=128)
 
 
 class RoomReadyData(BaseModel):
@@ -71,18 +72,25 @@ class RoomReadyData(BaseModel):
 class GameActionData(BaseModel):
     """game_action 消息的 data 校验"""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     action_type: str = Field(min_length=1)
+    request_id: int = Field(default=0, ge=0)
+    card_id: int | None = Field(default=None, ge=0)
+    target_ids: list[int] = Field(default_factory=list, max_length=8)
+    skill_id: str | None = Field(default=None, max_length=50)
+    card_ids: list[int] = Field(default_factory=list, max_length=126)
 
 
 class GameResponseData(BaseModel):
     """game_response 消息的 data 校验"""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     request_type: str = Field(min_length=1)
     accepted: bool = False
+    request_id: int = Field(default=0, ge=0)
+    card_id: int | None = Field(default=None, ge=0)
 
 
 class HeroChosenData(BaseModel):
@@ -91,6 +99,7 @@ class HeroChosenData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hero_id: str = Field(min_length=1, max_length=50)
+    request_id: int = Field(default=0, ge=0)
 
 
 class ChatData(BaseModel):
@@ -130,5 +139,5 @@ def validate_client_message(raw_json: str) -> ClientMsgModel:
     msg = ClientMsgModel.model_validate_json(raw_json)
     validator_cls = DATA_VALIDATORS.get(msg.type)
     if validator_cls is not None:
-        validator_cls.model_validate(msg.data)
+        msg.data = validator_cls.model_validate(msg.data).model_dump()
     return msg

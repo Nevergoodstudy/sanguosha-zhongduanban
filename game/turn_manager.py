@@ -81,61 +81,72 @@ class TurnManager:
             GamePhase.PREPARE: self._execute_prepare_phase,
             GamePhase.JUDGE: self._execute_judge_phase,
             GamePhase.DRAW: self._execute_draw_phase,
-            GamePhase.PLAY: self._execute_play_phase,
-            GamePhase.DISCARD: self._execute_discard_phase,
             GamePhase.END: self._execute_end_phase,
         }
 
-    def run_turn(self, player: Player) -> None:
-        """执行玩家的完整回合
-
-        Args:
-            player: 当前回合玩家
-        """
+    def run_turn(
+        self,
+        player: Player,
+        *,
+        play_human: Callable[[Player], None] | None = None,
+        discard_human: Callable[[Player, int], None] | None = None,
+        refresh: Callable[[], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> None:
+        """按阶段执行回合，将真人的出牌和弃牌交给调用方。"""
         if not player.is_alive:
             return
+        if player.flipped:
+            player.toggle_flip()
+            self.engine.log_event("turn_skipped", _t("turn.flipped_skipped", name=player.name))
+            return
 
-        # M1-T04: 发布回合开始语义事件
         self.engine.event_bus.emit(EventType.TURN_START, player=player)
         self.engine.log_event("turn_start", _t("turn.start", name=player.name))
         player.reset_turn()
         self.fsm.reset()
 
-        # 按顺序执行各阶段
         for phase in PHASE_ORDER:
-            if not player.is_alive:
+            if should_stop and should_stop():
+                return
+            if not player.is_alive or self.engine.is_game_over():
                 break
-            self._execute_phase(player, phase)
+            self._execute_phase(player, phase, play_human, discard_human, refresh)
 
+        if should_stop and should_stop():
+            return
         self.engine.log_event("turn_end", _t("turn.end", name=player.name))
-        # M1-T04: 发布回合结束语义事件
         self.engine.event_bus.emit(EventType.TURN_END, player=player)
 
-    def _execute_phase(self, player: Player, phase: GamePhase) -> None:
-        """执行指定阶段
-
-        Args:
-            player: 当前回合玩家
-            phase: 要执行的阶段
-        """
-        # FSM 验证阶段转换合法性（首个阶段 PREPARE 跳过检查）
+    def _execute_phase(
+        self,
+        player: Player,
+        phase: GamePhase,
+        play_human: Callable[[Player], None] | None,
+        discard_human: Callable[[Player, int], None] | None,
+        refresh: Callable[[], None] | None,
+    ) -> None:
+        """推进阶段并发布结算事件。"""
         if phase != GamePhase.PREPARE or self.fsm.current != GamePhase.PREPARE:
             self.fsm.transition(phase)
         self.current_phase = phase
         self.engine.phase = phase
 
-        # M1-T04: 发布阶段开始/结束语义事件
-        start_evt = _PHASE_START_EVENTS.get(phase)
-        if start_evt:
-            self.engine.event_bus.emit(start_evt, player=player)
+        if phase == GamePhase.PLAY and player.skip_play_phase:
+            self._execute_play_phase(player)
+            return
+        if refresh:
+            refresh()
+        self.engine.event_bus.emit(_PHASE_START_EVENTS[phase], player=player)
 
-        handler = self._phase_handlers.get(phase)
-        if handler:
-            handler(player)
+        if phase == GamePhase.PLAY:
+            self._execute_play_phase(player, play_human)
+        elif phase == GamePhase.DISCARD:
+            self._execute_discard_phase(player, discard_human)
+        elif phase in self._phase_handlers:
+            self._phase_handlers[phase](player)
 
-        end_evt = _PHASE_END_EVENTS.get(phase)
-        if end_evt:
-            self.engine.event_bus.emit(end_evt, player=player)
+        self.engine.event_bus.emit(_PHASE_END_EVENTS[phase], player=player)
 
     def _execute_prepare_phase(self, player: Player) -> None:
         """执行准备阶段"""
@@ -222,7 +233,9 @@ class TurnManager:
                     return True
         return False
 
-    def _execute_play_phase(self, player: Player) -> None:
+    def _execute_play_phase(
+        self, player: Player, play_human: Callable[[Player], None] | None = None
+    ) -> None:
         """执行出牌阶段"""
         # 检查是否跳过（乐不思蜀）
         if player.skip_play_phase:
@@ -234,8 +247,9 @@ class TurnManager:
 
         if player.is_ai:
             self._ai_play_phase(player)
-        else:
-            self._human_play_phase(player)
+            return
+        if play_human:
+            play_human(player)
 
     def _ai_play_phase(self, player: Player) -> None:
         """AI 出牌阶段"""
@@ -243,19 +257,20 @@ class TurnManager:
             bot = self.engine.ai_bots[player.id]
             bot.play_phase(player, self.engine)
 
-    def _human_play_phase(self, player: Player) -> None:
-        """人类玩家出牌阶段"""
-        # 由 UI 控制
-        pass
-
-    def _execute_discard_phase(self, player: Player) -> None:
-        """执行弃牌阶段"""
+    def _execute_discard_phase(
+        self, player: Player, discard_human: Callable[[Player, int], None] | None = None
+    ) -> None:
+        """执行弃牌阶段。"""
         discard_count = player.need_discard
-        if discard_count > 0:
-            self.engine.log_event("phase", _t("turn.discard_phase", count=discard_count))
+        if discard_count <= 0:
+            return
 
-            if player.is_ai:
-                self._ai_discard(player, discard_count)
+        self.engine.log_event("phase", _t("turn.discard_phase", count=discard_count))
+        if player.is_ai:
+            self._ai_discard(player, discard_count)
+            return
+        if discard_human:
+            discard_human(player, discard_count)
 
     def _ai_discard(self, player: Player, count: int) -> None:
         """AI 弃牌"""

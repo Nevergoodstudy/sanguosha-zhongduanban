@@ -8,11 +8,11 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/nevergoodstudy-hub/sanguosha-zhongduanban.git
+git clone https://github.com/Nevergoodstudy/sanguosha-zhongduanban.git
 cd sanguosha-zhongduanban
 
 # 安装依赖
-pip install -r requirements.txt
+python -m pip install ".[dev]"
 
 # 运行测试
 python -m pytest tests/ -v

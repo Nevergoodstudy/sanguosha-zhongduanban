@@ -94,9 +94,10 @@ class TestCombatSystem:
         assert target.hp <= hp_before
 
     def test_request_shan_no_cards(self, engine):
-        """没有闪时 request_shan 返回 0"""
+        """没有闪且没有龙胆时 request_shan 返回 0。"""
         player = engine.players[0]
-        player.hand = [make_card(CardName.SHA)]  # 只有杀，没有闪
+        player.set_hero(engine.hero_repo.get_hero("zhangfei"))
+        player.hand = [make_card(CardName.SHA)]
         count = engine.combat.request_shan(player, 1)
         assert count == 0
 

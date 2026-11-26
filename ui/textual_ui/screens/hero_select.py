@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import copy
-import random
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Button, Static
+
+from i18n import t as _t
 
 if TYPE_CHECKING:
     from game.hero import Hero
@@ -42,11 +43,15 @@ class HeroSelectScreen(Screen):
     }
     """
 
-    def __init__(self, player_count: int, difficulty: str, role_preference: str = "lord"):
+    def __init__(
+        self, player_count: int, difficulty: str, role_preference: str = "lord", *,
+        practice: bool = False,
+    ):
         super().__init__()
         self.player_count = player_count
         self.difficulty = difficulty
         self.role_preference = role_preference
+        self.practice = practice
         self.heroes: list[Hero] = []
         self.is_lord = False
 
@@ -58,7 +63,8 @@ class HeroSelectScreen(Screen):
 
         engine = GameEngine()
         engine.setup_game(
-            self.player_count, human_player_index=0, role_preference=self.role_preference
+            self.player_count, human_player_index=0, role_preference=self.role_preference,
+            seed=42 if self.practice else None,
         )
 
         skill_system = SkillSystem(engine)
@@ -74,24 +80,24 @@ class HeroSelectScreen(Screen):
         lord_heroes = [h for h in all_heroes if any(s.is_lord_skill for s in h.skills)]
         normal_heroes = [h for h in all_heroes if not any(s.is_lord_skill for s in h.skills)]
 
-        if self.is_lord:
+        if self.practice:
+            self.heroes = [engine.hero_repo.get_hero("liubei")]
+        elif self.is_lord:
             available = lord_heroes.copy()
             remaining = 5 - len(available)
             if remaining > 0:
-                extra = random.sample(normal_heroes, min(remaining, len(normal_heroes)))
+                extra = engine.rng.sample(normal_heroes, min(remaining, len(normal_heroes)))
                 available.extend(extra)
-            random.shuffle(available)
+            engine.rng.shuffle(available)
             self.heroes = available[:5]
         else:
-            self.heroes = random.sample(normal_heroes, min(3, len(normal_heroes)))
+            self.heroes = engine.rng.sample(normal_heroes, min(3, len(normal_heroes)))
 
         # 动态创建按钮
         box = self.query_one("#hero-box")
-        if self.is_lord:
-            title = "主公选将 (5选1)"
-        else:
-            identity_name = engine.human_player.identity.chinese_name
-            title = f"你的身份: {identity_name} — 选择武将 (3选1)"
+        title = _t("ui.hero.practice") if self.practice else _t("ui.hero.choose")
+        if self.is_lord and not self.practice:
+            title = _t("ui.hero.lord")
         box.query_one("#hero-title").update(f"🎭 {title}")
 
         for i, hero in enumerate(self.heroes):
@@ -100,10 +106,11 @@ class HeroSelectScreen(Screen):
             label = f"{hero.name} [{kingdom}] HP:{hero.max_hp}  {skills_text}"
             btn = Button(label, id=f"hero-{i}", classes="hero-btn", variant="primary")
             box.mount(btn)
+        self.call_after_refresh(lambda: self.query_one("#hero-0").focus())
 
     def compose(self) -> ComposeResult:
         yield Container(
-            Static("🎭 选择武将", id="hero-title"),
+            Static(_t("ui.hero.choose"), id="hero-title"),
             id="hero-box",
         )
 
@@ -123,22 +130,22 @@ class HeroSelectScreen(Screen):
         hero = copy.deepcopy(chosen_hero)
         engine.human_player.set_hero(hero)
 
-        # AI 选将 — AI 主公优先选主公技武将
-        used = [hero.id]
-        all_heroes = engine.hero_repo.get_all_heroes()
-        available = [h for h in all_heroes if h.id not in used]
-        ai_choices = {}
-        for p in engine.players:
-            if p.is_ai and p.hero is None and available:
-                if p.identity == Identity.LORD:
-                    # AI 主公优先选有主公技的武将
-                    lord_pool = [h for h in available if any(s.is_lord_skill for s in h.skills)]
-                    h = random.choice(lord_pool) if lord_pool else random.choice(available)
-                else:
-                    h = random.choice(available)
-                ai_choices[p.id] = h.id
-                available.remove(h)
-        engine.choose_heroes(ai_choices)
+        if self.practice:
+            engine.choose_heroes({1: "ganning"})
+            self._arrange_practice_deck()
+        if not self.practice:
+            available = [h for h in engine.hero_repo.get_all_heroes() if h.id != hero.id]
+            ai_choices = {}
+            for p in engine.players:
+                if not p.is_ai or p.hero is not None:
+                    continue
+                lord_pool = [
+                    h for h in available if any(s.is_lord_skill for s in h.skills)
+                ] if p.identity == Identity.LORD else []
+                choice = engine.rng.choice(lord_pool or available)
+                ai_choices[p.id] = choice.id
+                available.remove(choice)
+            engine.choose_heroes(ai_choices)
 
         # 设置 AI
         difficulty = AIDifficulty(self.app._difficulty)
@@ -147,8 +154,27 @@ class HeroSelectScreen(Screen):
                 engine.ai_bots[p.id] = AIBot(p, difficulty)
 
         engine.start_game()
+        if self.practice:
+            engine.players[0].hp = 2
+            engine.players[1].hp = 1
 
         # 跳过所有 setup screens，进入游戏
         from .game_play import GamePlayScreen
 
-        self.app.switch_screen(GamePlayScreen())
+        self.app.switch_screen(GamePlayScreen(practice=self.practice))
+
+    def _arrange_practice_deck(self) -> None:
+        from game.card import CardName
+
+        deck = self.app._engine.deck
+        opening = [
+            CardName.SHA, CardName.SHAN, CardName.SHAN, CardName.SHAN,
+            CardName.SHAN, CardName.SHA, CardName.SHA, CardName.SHA,
+            CardName.SHAN, CardName.SHAN, CardName.SHA, CardName.SHA,
+            CardName.SHA, CardName.SHAN,
+        ]
+        arranged = []
+        for name in opening:
+            index = next(i for i, card in enumerate(deck.draw_pile) if card.name == name)
+            arranged.append(deck.draw_pile.pop(index))
+        deck.put_on_top(list(reversed(arranged)))

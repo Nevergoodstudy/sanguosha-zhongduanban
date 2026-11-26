@@ -8,9 +8,11 @@ import copy
 
 import pytest
 
+from game.actions import PlayCardAction
 from game.card import Card, CardName, CardSubtype, CardSuit, CardType
 from game.engine import GameEngine
 from game.enums import GamePhase, GameState
+from game.events import EventType
 from game.player import Identity, Player
 
 
@@ -239,3 +241,113 @@ class TestCombatSha:
         engine.combat.use_sha(attacker, sha, [target])
         # Target should NOT take damage (out of range)
         assert target.hp == old_hp
+
+
+@pytest.mark.parametrize(
+    ("card_name", "target_index"),
+    [
+        (CardName.SHA, None),
+        (CardName.SHA, 0),
+        (CardName.SHA, 2),
+        (CardName.TAO, None),
+        (CardName.GUOHE, None),
+        (CardName.GUOHE, 1),
+        (CardName.HUOGONG, 1),
+    ],
+)
+def test_refused_play_preserves_card_zones(card_name, target_index):
+    engine = _setup_engine(4)
+    player = engine.current_player
+    card = next(card for card in engine.deck.draw_pile if card.name == card_name)
+    engine.deck.draw_pile.remove(card)
+    player.hand.insert(0, card)
+    engine.players[1].hand.clear()
+    targets = [] if target_index is None else [engine.players[target_index]]
+    before = (
+        player.hand[:],
+        player.equipment.get_all_cards(),
+        engine.deck.draw_pile[:],
+        engine.deck.discard_pile[:],
+        player.sha_count,
+        engine.round_count,
+    )
+
+    assert not engine.use_card(player, card, targets)
+
+    assert before == (
+        player.hand,
+        player.equipment.get_all_cards(),
+        engine.deck.draw_pile,
+        engine.deck.discard_pile,
+        player.sha_count,
+        engine.round_count,
+    )
+
+
+def test_tiesuo_recast_consumes_card_only_for_empty_target_list():
+    engine = _setup_engine(4)
+    engine.phase = GamePhase.PLAY
+    player = engine.current_player
+    tiesuo = next(card for card in engine.deck.draw_pile if card.name == CardName.TIESUO)
+    engine.deck.draw_pile.remove(tiesuo)
+    player.hand[:] = [tiesuo]
+    top_card = engine.deck.draw_pile[-1]
+    stale = PlayCardAction(player.id, card_id=id(tiesuo), target_ids=[999])
+
+    assert not engine.execute_action(stale)
+    assert player.hand == [tiesuo]
+    assert not engine.deck.discard_pile
+
+    assert engine.execute_action(PlayCardAction(player.id, card_id=id(tiesuo), target_ids=[]))
+    assert player.hand == [top_card]
+    assert engine.deck.discard_pile == [tiesuo]
+
+
+def test_play_action_rejects_card_outside_play_phase():
+    engine = _setup_engine(2)
+    engine.phase = GamePhase.DRAW
+    player = engine.current_player
+    card = next(card for card in engine.deck.draw_pile if card.name == CardName.WUZHONG)
+    engine.deck.draw_pile.remove(card)
+    player.hand[:] = [card]
+    before = engine.deck.draw_pile[:]
+
+    assert not engine.execute_action(PlayCardAction(player.id, card_id=id(card)))
+    assert player.hand == [card]
+    assert engine.deck.draw_pile == before
+    assert not engine.deck.discard_pile
+
+
+def test_canceled_equip_keeps_hand_order_and_existing_weapon():
+    engine = _setup_engine(2)
+    player = engine.current_player
+    weapons = [card for card in engine.deck.draw_pile if card.subtype == CardSubtype.WEAPON]
+    old_weapon, new_weapon = weapons[:2]
+    engine.deck.draw_pile.remove(old_weapon)
+    engine.deck.draw_pile.remove(new_weapon)
+    player.equipment.equip(old_weapon)
+    player.hand.insert(0, new_weapon)
+    hand_before = player.hand[:]
+    engine.event_bus.subscribe(EventType.BEFORE_EQUIP, lambda event: event.cancel())
+
+    assert not engine.use_card(player, new_weapon)
+    assert player.hand == hand_before
+    assert player.equipment.weapon is old_weapon
+    assert not engine.deck.discard_pile
+
+
+def test_nullified_juedou_consumes_both_cards():
+    engine = _setup_engine(2)
+    player, target = engine.players
+    duel = next(card for card in engine.deck.draw_pile if card.name == CardName.JUEDOU)
+    wuxie = next(card for card in engine.deck.draw_pile if card.name == CardName.WUXIE)
+    engine.deck.draw_pile.remove(duel)
+    engine.deck.draw_pile.remove(wuxie)
+    player.hand[:] = [duel]
+    target.hand[:] = [wuxie]
+    hp_before = (player.hp, target.hp)
+
+    assert engine.use_card(player, duel, [target])
+    assert player.hand == target.hand == []
+    assert engine.deck.discard_pile == [wuxie, duel]
+    assert (player.hp, target.hp) == hp_before

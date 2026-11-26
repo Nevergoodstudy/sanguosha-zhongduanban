@@ -94,7 +94,7 @@ class TestUseSha:
 
         result = combat.use_sha(player, card, [])
         assert result is False
-        ctx.deck.discard.assert_called_once_with([card])
+        ctx.deck.discard.assert_not_called()
 
     def test_sha_out_of_range(self):
         ctx = _mock_context()

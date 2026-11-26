@@ -45,7 +45,7 @@ class TestRoom:
     def test_initial_state(self):
         room = Room(room_id="r1", host_id=1)
         assert room.state == RoomState.WAITING
-        assert room.engine is None
+        assert room.task is None
         assert room.event_log == []
 
 

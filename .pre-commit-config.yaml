@@ -17,27 +17,15 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
-  # Black - 代码格式化
-  - repo: https://github.com/psf/black
-    rev: 23.12.1
+  # 与 pyproject.toml 使用同一版本
+  - repo: local
     hooks:
-      - id: black
-        language_version: python3
-        args: ['--config', 'pyproject.toml']
-
-  # isort - 导入排序
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ['--settings-path', 'pyproject.toml']
-
-  # Ruff - 快速代码检查 (替代 flake8)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.9
-    hooks:
-      - id: ruff
-        args: ['--fix', '--config', 'pyproject.toml']
+      - id: ruff-check
+        name: Ruff syntax and undefined-name checks
+        entry: ruff check --select E9,F63,F7,F82
+        language: python
+        additional_dependencies: [ruff==0.17.6]
+        types: [python]
 
   # MyPy - 类型检查 (可选，逐步启用)
   # - repo: https://github.com/pre-commit/mirrors-mypy

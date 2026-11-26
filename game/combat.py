@@ -37,27 +37,26 @@ class CombatSystem:
     def use_sha(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用杀 (支持酒加成、火杀/雷杀属性伤害)。"""
         ctx = self.ctx
-        if not targets:
-            ctx.deck.discard([card])
+        if len(targets) != 1 or targets[0] is player:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
 
         if not player.can_use_sha():
             ctx.log_event("error", _t("combat.sha_already_used", name=player.name))
-            player.draw_cards([card])
             return False
 
         if not ctx.is_in_attack_range(player, target):
             ctx.log_event("error", _t("combat.target_out_of_range", name=target.name))
-            player.draw_cards([card])
             return False
 
         # 空城
         if target.has_skill(SkillId.KONGCHENG) and target.hand_count == 0:
             ctx.log_event("skill", _t("combat.kongcheng_sha", name=target.name))
-            player.draw_cards([card])
             return False
+
+        player.remove_card(card)
 
         # 确定伤害类型
         card_name = card.name
@@ -256,17 +255,17 @@ class CombatSystem:
     def use_juedou(self, player: Player, card: Card, targets: list[Player]) -> bool:
         """使用决斗。"""
         ctx = self.ctx
-        if not targets:
-            ctx.deck.discard([card])
+        if len(targets) != 1 or targets[0] is player:
+            ctx.log_event("error", _t("exc.invalid_target"))
             return False
 
         target = targets[0]
 
         if target.has_skill(SkillId.KONGCHENG) and target.hand_count == 0:
             ctx.log_event("skill", _t("combat.kongcheng_juedou", name=target.name))
-            player.draw_cards([card])
             return False
 
+        player.remove_card(card)
         ctx.log_event(
             "use_card",
             _t("combat.use_juedou", player=player.name, target=target.name),
@@ -439,5 +438,4 @@ class CombatSystem:
                     player, target, ctx
                 ):
                     card = sha_cards[0]
-                    player.remove_card(card)
                     self.use_sha(player, card, [target])

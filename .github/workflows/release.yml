@@ -23,47 +23,63 @@ jobs:
         platform:
           - name: Windows
             os: windows-latest
-            build_name: sanguosha-windows-amd64
-            artifact: sanguosha-windows-amd64.exe
+            platform: windows-amd64
+            extension: .exe
           - name: Linux
             os: ubuntu-latest
-            build_name: sanguosha-linux-amd64
-            artifact: sanguosha-linux-amd64
+            platform: linux-amd64
+            extension: ''
           - name: macOS
-            os: macos-latest
-            build_name: sanguosha-macos-amd64
-            artifact: sanguosha-macos-amd64
+            os: macos-15
+            platform: macos-arm64
+            extension: ''
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Python 3.14
+      - name: Setup Python 3.12
         uses: actions/setup-python@v6
         with:
-          python-version: '3.14'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install rich textual websockets pyinstaller
+        run: python -m pip install '.[build]'
 
       - name: Build with PyInstaller
-        run: |
-          python build.py --name ${{ matrix.platform.build_name }}
-
-      - name: Verify build output
+        id: package
         shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform.platform }}
+          EXTENSION: ${{ matrix.platform.extension }}
         run: |
-          echo "=== dist/ contents ==="
-          ls -la dist/
-          echo "=== Build OK ==="
+          version=$(python -c 'from importlib.metadata import version; print(version("sanguosha"))')
+          test "v$version" = "$GITHUB_REF_NAME"
+          name="sanguosha-$version-$PLATFORM"
+          python -m PyInstaller --version
+          python build.py --name "$name"
+          echo "artifact=$name$EXTENSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify runnable artifact outside the repository
+        shell: bash
+        env:
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
+        run: |
+          binary="$GITHUB_WORKSPACE/dist/$ARTIFACT"
+          cd "$RUNNER_TEMP"
+          "$binary" --help
+          if [ "$RUNNER_OS" = macOS ]; then
+            python "$GITHUB_WORKSPACE/tools/macos_smoke.py" "$binary"
+          fi
+          python -c 'import hashlib, pathlib, sys; path = pathlib.Path(sys.argv[1]); print(hashlib.sha256(path.read_bytes()).hexdigest(), path.name)' "$binary"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform.artifact }}
-          path: dist/${{ matrix.platform.build_name }}*
+          name: ${{ steps.package.outputs.artifact }}
+          path: dist/${{ steps.package.outputs.artifact }}
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -91,19 +107,18 @@ jobs:
             ### 📥 下载
             | 平台 | 文件 |
             |------|------|
-            | Windows (x64) | `sanguosha-windows-amd64.exe` |
-            | Linux (x64) | `sanguosha-linux-amd64` |
-            | macOS (x64) | `sanguosha-macos-amd64` |
+            | Windows (x64) | `sanguosha-版本-windows-amd64.exe` |
+            | Linux (x64) | `sanguosha-版本-linux-amd64` |
+            | macOS (Apple Silicon) | `sanguosha-版本-macos-arm64` |
 
             ### 🚀 使用方法
             - **Windows**: 双击 `.exe` 运行
-            - **Linux/macOS**: `chmod +x sanguosha-*-amd64 && ./sanguosha-*-amd64`
+            - **Linux/macOS**：在终端用 `chmod +x 文件名` 添加执行权限，再执行 `./文件名`。
 
             ### ⚙️ 构建信息
-            - Python 3.14 + PyInstaller 6.18
+            - Python 3.12 + PyInstaller 6.22.3
             - Textual TUI 跨平台终端界面
-            - v4.0: 异步引擎 / 状态机 / 插件系统 / 1503 测试用例
           files: |
             release-assets/**/*
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           generate_release_notes: true
