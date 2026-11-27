@@ -82,7 +82,6 @@ jobs:
               workdir = Path(directory)
               env = {
                   **os.environ,
-                  "PYTHONIOENCODING": "utf-8",
                   "SANGUOSHA_DATA_HOME": directory,
                   "SANGUOSHA_LOG_FILE": str(workdir / "game.log"),
               }
