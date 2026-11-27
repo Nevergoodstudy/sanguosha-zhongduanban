@@ -48,7 +48,7 @@ class NormalStrategy:
             # 1. 使用装备
             for card in list(player.hand):
                 if card.card_type == CardType.EQUIPMENT:
-                    if engine.use_card(player, card):
+                    if engine.play_hand_card(player, card):
                         played = True
                         break
 
@@ -58,7 +58,7 @@ class NormalStrategy:
             # 2. 使用无中生有
             wuzhong = player.get_cards_by_name(CardName.WUZHONG)
             if wuzhong:
-                if engine.use_card(player, wuzhong[0]):
+                if engine.play_hand_card(player, wuzhong[0]):
                     played = True
                     continue
 
@@ -66,7 +66,7 @@ class NormalStrategy:
             if player.hp < player.max_hp - 1:  # 保留一些桃用于濒死
                 tao = player.get_cards_by_name(CardName.TAO)
                 if tao and player.hp <= 2:
-                    if engine.use_card(player, tao[0]):
+                    if engine.play_hand_card(player, tao[0]):
                         played = True
                         continue
 
@@ -81,7 +81,7 @@ class NormalStrategy:
                     targets = self._get_attack_targets(player, engine)
                     if targets:
                         target = self._choose_target(player, targets, engine)
-                        if engine.use_card(player, sha[0], [target]):
+                        if engine.play_hand_card(player, sha[0], [target]):
                             played = True
                             continue
 
@@ -90,56 +90,56 @@ class NormalStrategy:
                 if card.name == CardName.GUOHE:
                     target = self._choose_dismount_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.SHUNSHOU:
                     target = self._choose_steal_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.JUEDOU:
                     target = self._choose_duel_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.JIEDAO:
                     targets = self._choose_jiedao_targets(player, engine)
                     if targets:
-                        if engine.use_card(player, card, targets):
+                        if engine.play_hand_card(player, card, targets):
                             played = True
                             break
 
                 elif card.name == CardName.LEBUSISHU:
                     target = self._choose_lebusishu_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.BINGLIANG:
                     target = self._choose_bingliang_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.HUOGONG:
                     target = self._choose_huogong_target(player, engine)
                     if target:
-                        if engine.use_card(player, card, [target]):
+                        if engine.play_hand_card(player, card, [target]):
                             played = True
                             break
 
                 elif card.name == CardName.TIESUO:
                     targets = self._choose_tiesuo_targets(player, engine)
                     if targets is not None:
-                        if engine.use_card(player, card, targets):
+                        if engine.play_hand_card(player, card, targets):
                             played = True
                             break
 
@@ -150,7 +150,7 @@ class NormalStrategy:
             for card in list(player.hand):
                 if card.name in [CardName.NANMAN, CardName.WANJIAN]:
                     if self._should_use_aoe(player, engine):
-                        if engine.use_card(player, card):
+                        if engine.play_hand_card(player, card):
                             played = True
                             break
 
@@ -163,7 +163,7 @@ class NormalStrategy:
                     # 如果判定区没有闪电，尝试使用
                     has_shandian = any(c.name == CardName.SHANDIAN for c in player.judge_area)
                     if not has_shandian:
-                        if engine.use_card(player, card):
+                        if engine.play_hand_card(player, card):
                             played = True
                             break
 
@@ -179,7 +179,7 @@ class NormalStrategy:
                 if jiu_cards and sha_cards:
                     targets = self._get_attack_targets(player, engine)
                     if targets:
-                        if engine.use_card(player, jiu_cards[0]):
+                        if engine.play_hand_card(player, jiu_cards[0]):
                             played = True
                             continue
 

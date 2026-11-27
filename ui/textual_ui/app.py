@@ -24,6 +24,8 @@ from ui.textual_ui.screens import (  # noqa: F401
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from game.engine import GameEngine
 
 
@@ -62,13 +64,18 @@ class SanguoshaApp(App):
         Binding("q", "quit_match", show=False, priority=True),
     ]
 
-    def __init__(self):
+    def __init__(
+        self, *, practice_checkpoint: Path | None = None, resume_engine: GameEngine | None = None
+    ):
         super().__init__()
-        self._engine: GameEngine | None = None
+        self.practice_checkpoint = practice_checkpoint
+        self._engine = resume_engine
         self._difficulty: str = "normal"
 
     def on_mount(self) -> None:
         self.push_screen(MainMenuScreen())
+        if self.practice_checkpoint is not None and self._engine is not None:
+            self.push_screen(GamePlayScreen(practice=True))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "quit_match":

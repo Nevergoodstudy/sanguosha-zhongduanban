@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>三国杀练习局</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>三国杀终端版</p>
+        <h1>练习局</h1>
+      </header>
+      <section id="board" aria-label="牌桌" hidden>
+        <p id="opponent"></p>
+        <ol id="events" aria-label="对局记录"></ol>
+        <p id="seat"></p>
+        <div id="hand" aria-label="手牌"></div>
+      </section>
+      <section id="prompt" aria-live="polite"></section>
+      <div id="actions" aria-label="可用操作"></div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

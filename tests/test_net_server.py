@@ -62,6 +62,7 @@ class TestGameServer:
 
     def test_assign_player_id(self):
         server = GameServer()
+        assert server.host == "127.0.0.1"
         assert server._assign_player_id() == 1
         assert server._assign_player_id() == 2
         assert server._assign_player_id() == 3

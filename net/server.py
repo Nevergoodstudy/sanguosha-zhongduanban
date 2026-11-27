@@ -132,7 +132,7 @@ class GameServer:
 
     def __init__(
         self,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8765,
         rate_limit_window: float = RATE_LIMIT_WINDOW,
         rate_limit_max_msgs: int = RATE_LIMIT_MAX_MSGS,

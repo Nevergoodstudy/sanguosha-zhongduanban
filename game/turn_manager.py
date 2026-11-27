@@ -277,7 +277,7 @@ class TurnManager:
         if player.id in self.engine.ai_bots:
             bot = self.engine.ai_bots[player.id]
             cards_to_discard = bot.choose_discard(player, count, self.engine)
-            self.engine.discard_cards(player, cards_to_discard)
+            self.engine.discard_for_turn(player, cards_to_discard)
 
     def _execute_end_phase(self, player: Player) -> None:
         """执行结束阶段"""

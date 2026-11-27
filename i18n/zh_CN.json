@@ -422,6 +422,7 @@
   "ui.report.summary": "获胜方 {winner} · {players} 人 · {rounds} 轮",
   "ui.report.version": "游戏版本 {version}",
   "ui.report.empty": "还没有已完成的对局",
+  "ui.practice.checkpoint_error": "练习局存档更新失败：{error}",
   "ui.report.save_failed": "本局战报可查看，写入历史记录失败",
   "ui.report.back": "返回",
   "ui.menu.rules": "📖 游戏规则",

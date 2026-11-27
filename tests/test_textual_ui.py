@@ -205,7 +205,7 @@ class TestMainEntry:
 
         parser = argparse.ArgumentParser()
         # 只保留网络/回放参数
-        parser.add_argument("--server", nargs="?", const="0.0.0.0:8765", default=None)
+        parser.add_argument("--server", nargs="?", const="127.0.0.1:8765", default=None)
         parser.add_argument("--connect", default=None)
         parser.add_argument("--replay", default=None)
 

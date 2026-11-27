@@ -215,6 +215,15 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
         assert app.screen.focused.id == "hero-0"
         await pilot.press("enter")
         await pilot.pause()
+        engine = app._engine
+        hand_before = engine.human_player.hand[:]
+        discard_before = engine.deck.discard_pile[:]
+        await pilot.press("1", "escape")
+        await pilot.pause()
+        assert engine.human_player.hand == hand_before
+        assert engine.deck.discard_pile == discard_before
+        assert not engine.action_log
+
         await pilot.press("1", "enter")
         await pilot.pause()
         assert not app._engine.players[1].get_cards_by_name("闪")
@@ -235,6 +244,13 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
         await pilot.pause()
         assert isinstance(app.screen, GameOverScreen)
         assert app.screen.focused.id == "btn-again"
+        assert [entry["sequence"] for entry in engine.action_log] == list(
+            range(1, len(engine.action_log) + 1)
+        )
+        actions = [action for action in engine.action_log if action["player_id"] == 0]
+        assert [action["action_type"] for action in actions] == ["PLAY_CARD", "DISCARD", "PLAY_CARD"]
+        assert actions[0]["data"]["card_id"] == hand_before[0].id
+        assert len(actions[1]["data"]["card_ids"]) == 3
         await pilot.press("tab", "enter")
         await pilot.pause()
         assert isinstance(app.screen, MatchReportScreen)

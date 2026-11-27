@@ -180,7 +180,7 @@ class DiscardAction(GameAction):
     """弃牌动作"""
 
     action_type: ActionType = field(default=ActionType.DISCARD, init=False)
-    card_ids: list[int] = field(default_factory=list)
+    card_ids: list[int | str] = field(default_factory=list)
 
     def validate(self, engine: GameEngine) -> tuple[bool, str]:
         player = engine.get_player_by_id(self.player_id)
@@ -193,22 +193,22 @@ class DiscardAction(GameAction):
         return True, ""
 
     def execute(self, engine: GameEngine) -> bool:
-        valid, msg = self.validate(engine)
-        if not valid:
+        player = engine.get_player_by_id(self.player_id)
+        if player is None or not self.card_ids:
             return False
 
-        player = engine.get_player_by_id(self.player_id)
-        cards = []
-        for cid in self.card_ids:
-            for c in player.hand:
-                if id(c) == cid or getattr(c, "id", None) == cid:
-                    cards.append(c)
+        remaining = list(player.hand)
+        selected = []
+        for card_id in self.card_ids:
+            for index, card in enumerate(remaining):
+                if id(card) == card_id or card.id == card_id:
+                    selected.append(remaining.pop(index))
                     break
 
-        if cards:
-            engine.discard_cards(player, cards)
-            return True
-        return False
+        if len(selected) != len(self.card_ids):
+            return False
+        engine.discard_cards(player, selected)
+        return True
 
 
 @dataclass

@@ -161,12 +161,12 @@ class TestMainPyNetArgs:
         import argparse
 
         parser = argparse.ArgumentParser()
-        parser.add_argument("--server", nargs="?", const="0.0.0.0:8765", default=None)
+        parser.add_argument("--server", nargs="?", const="127.0.0.1:8765", default=None)
         parser.add_argument("--connect", default=None)
         parser.add_argument("--name", default=None)
 
         args = parser.parse_args(["--server"])
-        assert args.server == "0.0.0.0:8765"
+        assert args.server == "127.0.0.1:8765"
 
         args = parser.parse_args(["--server", "192.168.1.1:9999"])
         assert args.server == "192.168.1.1:9999"
@@ -175,7 +175,7 @@ class TestMainPyNetArgs:
         import argparse
 
         parser = argparse.ArgumentParser()
-        parser.add_argument("--server", nargs="?", const="0.0.0.0:8765", default=None)
+        parser.add_argument("--server", nargs="?", const="127.0.0.1:8765", default=None)
         parser.add_argument("--connect", default=None)
         parser.add_argument("--name", default=None)
 
@@ -187,7 +187,7 @@ class TestMainPyNetArgs:
         import argparse
 
         parser = argparse.ArgumentParser()
-        parser.add_argument("--server", nargs="?", const="0.0.0.0:8765", default=None)
+        parser.add_argument("--server", nargs="?", const="127.0.0.1:8765", default=None)
         parser.add_argument("--connect", default=None)
 
         args = parser.parse_args([])

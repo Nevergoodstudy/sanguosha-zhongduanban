@@ -239,7 +239,7 @@ class HardStrategy:
         if state["danger_level"] > 60 and player.hp < player.max_hp:
             tao = player.get_cards_by_name(CardName.TAO)
             if tao:
-                engine.use_card(player, tao[0])
+                engine.play_hand_card(player, tao[0])
 
         # 使用普通AI逻辑（目标选择已利用嘲讽值）
         self._normal.play_phase(player, engine)

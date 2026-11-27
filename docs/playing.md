@@ -32,9 +32,20 @@ sanguosha --latest-report > report.json
 sanguosha --replay report.json --step
 ```
 
+## 保存与恢复练习局
+
+启动时指定练习局存档，进入练习后会在每回合开始前保存。退出后用同一个文件恢复，退出时尚未打完的回合会重新开始。结算并成功保存战报后会移除这份续局存档。
+
+```sh
+sanguosha --practice-save practice.json
+sanguosha --resume-practice practice.json
+```
+
 ## 局域网内测
 
-用三个终端在本机启动服务端和两个客户端。以下示例使用回环地址。
+服务端默认只在本机监听。用三个终端在本机启动服务端和两个客户端。
+
+跨设备内测时，房主把示例中的 `127.0.0.1` 换成本机的局域网地址，保留 `--lan-preview`。另一台设备用房主的局域网地址连接。
 
 ```sh
 sanguosha --server 127.0.0.1:8765 --lan-preview

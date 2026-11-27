@@ -245,12 +245,31 @@ class GameEngine:
                 {
                     "action_type": action.action_type.name,
                     "player_id": action.player_id,
+                    "sequence": len(self.action_log) + 1,
+                    "turn": self.round_count,
+                    "phase": self.phase.value,
                     "timestamp": action.timestamp,
                     "data": self._serialize_action(action),
                 }
             )
 
         return result
+
+    def play_hand_card(
+        self, player: Player, card: Card, targets: list[Player] | tuple[Player, ...] = ()
+    ) -> bool:
+        """提交当前出牌阶段的手牌操作。"""
+        from .actions import PlayCardAction
+
+        return self.execute_action(
+            PlayCardAction(player.id, card_id=card.id, target_ids=[target.id for target in targets])
+        )
+
+    def discard_for_turn(self, player: Player, cards: list[Card]) -> bool:
+        """提交当前弃牌阶段的选择。"""
+        from .actions import DiscardAction
+
+        return self.execute_action(DiscardAction(player.id, card_ids=[card.id for card in cards]))
 
     def _serialize_action(self, action: "GameAction") -> dict:
         """序列化动作数据（用于回放）"""

@@ -1,0 +1,19 @@
+{
+  "identifier": "practice-window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/practice-engine",
+          "sidecar": true,
+          "args": ["--desktop-practice"]
+        }
+      ]
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill"
+  ]
+}

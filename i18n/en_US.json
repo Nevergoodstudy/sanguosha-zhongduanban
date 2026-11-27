@@ -422,6 +422,7 @@
   "ui.report.summary": "Winner: {winner} · {players} players · {rounds} rounds",
   "ui.report.version": "Game version {version}",
   "ui.report.empty": "No completed matches yet",
+  "ui.practice.checkpoint_error": "Could not update the practice checkpoint: {error}",
   "ui.report.save_failed": "This report is available for viewing, but could not be saved",
   "ui.report.back": "Back",
   "ui.menu.rules": "📖 Rules",
