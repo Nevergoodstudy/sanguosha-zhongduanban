@@ -1,5 +1,5 @@
 # 多平台构建 + 自动 Release 工作流
-# 触发条件: push tag v* (如 v3.4.0)
+# 发布候选分支只构建产物，v* 标签再创建 GitHub Release。
 # 构建: Windows (.exe) + macOS (binary) + Linux (binary)
 # 发布: 自动创建 GitHub Release 并上传三平台产物
 
@@ -7,11 +7,13 @@ name: Release
 
 on:
   push:
+    branches:
+      - 'release-candidate/**'
     tags:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -55,34 +57,98 @@ jobs:
           EXTENSION: ${{ matrix.platform.extension }}
         run: |
           version=$(python -c 'from importlib.metadata import version; print(version("sanguosha"))')
-          test "v$version" = "$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "v$version" = "$GITHUB_REF_NAME"
+          fi
           name="sanguosha-$version-$PLATFORM"
           python -m PyInstaller --version
           python build.py --name "$name"
           echo "artifact=$name$EXTENSION" >> "$GITHUB_OUTPUT"
 
-      - name: Verify runnable artifact outside the repository
+      - name: Verify packaged CLI and Chinese replay outside the repository
         shell: bash
         env:
           ARTIFACT: ${{ steps.package.outputs.artifact }}
         run: |
-          binary="$GITHUB_WORKSPACE/dist/$ARTIFACT"
-          cd "$RUNNER_TEMP"
-          "$binary" --help
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          binary = Path("dist", os.environ["ARTIFACT"]).resolve()
+          with TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as directory:
+              workdir = Path(directory)
+              env = {
+                  **os.environ,
+                  "SANGUOSHA_DATA_HOME": directory,
+                  "SANGUOSHA_LOG_FILE": str(workdir / "game.log"),
+              }
+              subprocess.run([binary, "--help"], cwd=workdir, env=env, check=True)
+              replay = workdir / "replay.json"
+              replay.write_text(json.dumps({
+                  "format": "sanguosha-match",
+                  "events": [{"turn": 1, "phase": "play", "message": "中文战报验证"}],
+              }), encoding="utf-8")
+              result = subprocess.run(
+                  [binary, "--replay", replay], cwd=workdir, env=env,
+                  check=True, stdout=subprocess.PIPE, encoding="utf-8",
+              )
+              if "中文战报验证" not in result.stdout:
+                  raise SystemExit("Packaged executable did not print the Chinese replay event")
+          PY
           if [ "$RUNNER_OS" = macOS ]; then
-            python "$GITHUB_WORKSPACE/tools/macos_smoke.py" "$binary"
+            python tools/macos_smoke.py "dist/$ARTIFACT"
           fi
-          python -c 'import hashlib, pathlib, sys; path = pathlib.Path(sys.argv[1]); print(hashlib.sha256(path.read_bytes()).hexdigest(), path.name)' "$binary"
+
+      - name: Record checksum and source revision
+        shell: bash
+        env:
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          import platform
+          import subprocess
+          from importlib.metadata import version
+          from pathlib import Path
+
+          binary = Path("dist", os.environ["ARTIFACT"])
+          with binary.open("rb") as artifact:
+              digest = hashlib.file_digest(artifact, "sha256").hexdigest()
+          binary.with_name(binary.name + ".sha256").write_text(
+              f"{digest}  {binary.name}\n", encoding="ascii", newline="\n",
+          )
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          build_info = [
+              f"commit={revision}",
+              f"version={version('sanguosha')}",
+              f"python={platform.python_version()}",
+              f"pyinstaller={version('pyinstaller')}",
+              f"architecture={platform.machine()}",
+          ]
+          binary.with_name(binary.name + ".build.txt").write_text(
+              "\n".join(build_info) + "\n", encoding="ascii", newline="\n",
+          )
+          PY
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.artifact }}
-          path: dist/${{ steps.package.outputs.artifact }}
+          path: |
+            dist/${{ steps.package.outputs.artifact }}
+            dist/${{ steps.package.outputs.artifact }}.sha256
+            dist/${{ steps.package.outputs.artifact }}.build.txt
           if-no-files-found: error
 
   release:
     name: Create GitHub Release
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -112,8 +178,9 @@ jobs:
             | macOS (Apple Silicon) | `sanguosha-版本-macos-arm64` |
 
             ### 🚀 使用方法
-            - **Windows**: 双击 `.exe` 运行
+            - **Windows**：在 Windows Terminal 的 PowerShell 标签页运行下载的 `.exe`。使用 `Get-FileHash -Algorithm SHA256` 核对同名 `.sha256` 文件。
             - **Linux/macOS**：在终端用 `chmod +x 文件名` 添加执行权限，再执行 `./文件名`。
+            - 各平台的 `.build.txt` 记录源码提交、版本和构建环境。
 
             ### ⚙️ 构建信息
             - Python 3.12 + PyInstaller 6.22.3

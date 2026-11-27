@@ -66,6 +66,7 @@ def build(
         "--exclude-module=mypy",
         "--exclude-module=ruff",
         "--console",
+        "--python-option=X utf8",
         "--noconfirm",
         "--noupx",
         "--onedir" if onedir else "--onefile",
