@@ -271,11 +271,13 @@ class GameEngine:
 
         return self.execute_action(DiscardAction(player.id, card_ids=[card.id for card in cards]))
 
-    def _serialize_action(self, action: "GameAction") -> dict:
+    def _serialize_action(
+        self, action: GameAction
+    ) -> dict[str, int | str | list[int] | list[int | str]]:
         """序列化动作数据（用于回放）"""
         from .actions import DiscardAction, PlayCardAction, UseSkillAction
 
-        data = {"type": action.action_type.name}
+        data: dict[str, int | str | list[int] | list[int | str]] = {"type": action.action_type.name}
 
         if isinstance(action, PlayCardAction):
             data["card_id"] = action.card_id

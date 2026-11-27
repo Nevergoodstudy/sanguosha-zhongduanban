@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from textual import work
 from textual.app import ComposeResult
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from game.card import Card
     from game.engine import GameEngine
     from game.player import Player
+    from ui.textual_ui.app import SanguoshaApp
 
 
 ModalResult = TypeVar("ModalResult")
@@ -225,7 +226,7 @@ class GamePlayScreen(Screen):
         from game.config import get_config
         from game.practice_checkpoint import save_practice_checkpoint
 
-        checkpoint = self.app.practice_checkpoint if self.practice else None
+        checkpoint = cast("SanguoshaApp", self.app).practice_checkpoint if self.practice else None
         delay = get_config().ai_turn_delay
         while not self._quit_requested.is_set() and not engine.is_game_over():
             if checkpoint is not None:
