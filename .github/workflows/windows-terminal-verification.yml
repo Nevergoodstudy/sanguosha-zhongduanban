@@ -26,7 +26,7 @@ jobs:
       - name: Drive the packaged practice match through ConPTY
         shell: bash
         run: |
-          python - <<'PY'
+          python -X utf8 - <<'PY'
           import hashlib
           import json
           import os
@@ -42,7 +42,7 @@ jobs:
           if hashlib.sha256(binary.read_bytes()).hexdigest() != checksum:
               raise SystemExit("Candidate checksum mismatch")
 
-          with TemporaryDirectory() as directory:
+          with TemporaryDirectory(ignore_cleanup_errors=True) as directory:
               workdir = Path(directory)
               os.environ["SANGUOSHA_DATA_HOME"] = directory
               os.environ["SANGUOSHA_LOG_FILE"] = str(workdir / "game.log")
