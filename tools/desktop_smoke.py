@@ -14,14 +14,12 @@ from tempfile import TemporaryDirectory
 def main(binary: Path) -> None:
     with TemporaryDirectory() as directory:
         workdir = Path(directory)
-        env = {
-            **os.environ,
-            "SANGUOSHA_DATA_HOME": directory,
-            "SANGUOSHA_LOG_FILE": str(workdir / "game.log"),
-        }
+        env = os.environ.copy()
+        env["SANGUOSHA_DATA_HOME"] = directory
+        env.pop("SANGUOSHA_LOG_FILE", None)
         child = subprocess.Popen(
             [binary, "--desktop-practice"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            encoding="utf-8", cwd=workdir, env=env,
+            encoding="utf-8", cwd=binary.anchor, env=env,
         )
         try:
             stdin, stdout = child.stdin, child.stdout
@@ -66,6 +64,7 @@ def main(binary: Path) -> None:
             send("quit")
             assert child.wait(timeout=15) == 0
             assert (workdir / "match_history.json").is_file()
+            assert (workdir / "desktop-practice.log").is_file()
         finally:
             if child.poll() is None:
                 child.kill()

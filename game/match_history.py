@@ -82,7 +82,7 @@ class MatchHistory:
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self._path = Path(path) if path else self._default_path()
+        self._path = Path(path) if path else self.default_path()
         self._legacy_path = _LEGACY_PATH if path is None else self._path
         self._records: list[MatchResult] = []
         self._next_id: int = 1
@@ -135,7 +135,7 @@ class MatchHistory:
                 temporary.unlink(missing_ok=True)
 
     @staticmethod
-    def _default_path() -> Path:
+    def default_path() -> Path:
         configured = os.environ.get("SANGUOSHA_DATA_HOME")
         if configured:
             return Path(configured) / "match_history.json"

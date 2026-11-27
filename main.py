@@ -90,15 +90,17 @@ def main():
 
     set_locale(args.lang)
 
-    setup_logging(enable_console=False)
-
     if args.desktop_practice:
         import asyncio
 
+        from game.match_history import MatchHistory
         from tools.desktop_practice import run
 
+        setup_logging(log_file=str(MatchHistory.default_path().with_name("desktop-practice.log")))
         asyncio.run(run())
         return
+
+    setup_logging(enable_console=False)
 
     if args.latest_report:
         from dataclasses import asdict
