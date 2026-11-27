@@ -1,0 +1,92 @@
+name: Windows terminal verification
+
+on:
+  push:
+    branches: [verify/windows-terminal]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  practice:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sanguosha-4.0.0-windows-amd64.exe
+          run-id: 45934282903
+          github-token: ${{ github.token }}
+          path: candidate
+      - run: 'python -m pip install --only-binary=:all: pywinpty==3.1.2'
+      - name: Drive the packaged practice match through ConPTY
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import time
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from winpty import PTY
+
+          binary = Path("candidate/sanguosha-4.0.0-windows-amd64.exe").resolve()
+          checksum = binary.with_suffix(".exe.sha256").read_text(encoding="ascii").split()[0]
+          if hashlib.sha256(binary.read_bytes()).hexdigest() != checksum:
+              raise SystemExit("Candidate checksum mismatch")
+
+          with TemporaryDirectory() as directory:
+              workdir = Path(directory)
+              os.environ["SANGUOSHA_DATA_HOME"] = directory
+              os.environ["SANGUOSHA_LOG_FILE"] = str(workdir / "game.log")
+              terminal = PTY(120, 44)
+              terminal.spawn(str(binary), " --lang zh_CN", directory)
+              sequence = [
+                  ("开始新游戏", ["\t", "\r"]),
+                  ("确认武将", ["\r"]),
+                  ("选择手牌出牌，按 E 结束出牌", ["1"]),
+                  ("选择「杀」的目标", ["\r"]),
+                  ("成功闪避", ["e"]),
+                  ("确认弃牌", ["\r", "\t", "\r", "\t", "\r", "\x1b[Z", "\x1b[Z", "\x1b[Z", "\r"]),
+                  ("出闪", ["\r"]),
+                  ("成功闪避", []),
+                  ("选择手牌出牌，按 E 结束出牌", ["2"]),
+                  ("选择「杀」的目标", ["\r"]),
+                  ("再来一局", ["\t", "\r"]),
+                  ("游戏版本", ["\x11"]),
+              ]
+              for label, keys in sequence:
+                  output = ""
+                  deadline = time.monotonic() + 18
+                  while label not in re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output):
+                      if time.monotonic() > deadline or not terminal.isalive():
+                          raise RuntimeError(f"Missing {label}: {output[-2500:]!r}")
+                      output += terminal.read(blocking=False)
+                      time.sleep(0.03)
+                  print(f"Rendered {label}", flush=True)
+                  time.sleep(0.6 if keys == ["2"] else 0.1)
+                  for key in keys:
+                      terminal.write(key)
+                      time.sleep(0.1)
+
+              deadline = time.monotonic() + 10
+              while terminal.isalive():
+                  if time.monotonic() > deadline:
+                      raise RuntimeError("Game did not exit after Ctrl+Q")
+                  terminal.read(blocking=False)
+                  time.sleep(0.03)
+              if terminal.get_exitstatus() != 0:
+                  raise RuntimeError(f"Unexpected exit code: {terminal.get_exitstatus()}")
+              history = workdir / "match_history.json"
+              result = json.loads(history.read_text(encoding="utf-8"))["matches"][-1]
+              if result["winner"] != "lord" or result["game_version"] != "4.0.0":
+                  raise RuntimeError("Expected a completed practice victory for version 4.0.0")
+              print("Windows candidate completed the keyboard practice and persisted the report.")
+          PY
