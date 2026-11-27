@@ -8,6 +8,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -136,12 +137,12 @@ jobs:
           name: dist
           path: dist/
 
-  # 多平台 EXE 构建 (仅 main 分支)
+  # 多平台可执行文件构建（main 分支或手动验证）
   build-exe:
     name: Build ${{ matrix.platform.name }}
     needs: [lint, typecheck, test]
     runs-on: ${{ matrix.platform.os }}
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
