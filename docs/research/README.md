@@ -2,6 +2,7 @@
 
 这些文档记录项目早期设计和对比研究。现行功能、支持平台和验收见[主文档](../../README.md)及[实施记录](../macos-improvement-plan.md)。
 
+- [架构换新公开资料与阶段 0 候选验收](phase-0-release-candidate.md)
 - [DEEP_RENOVATION_PLAN](DEEP_RENOVATION_PLAN.md)
 - [improvement_suggestions_v5](improvement_suggestions_v5.md)
 - [problem_analysis_v5](problem_analysis_v5.md)
