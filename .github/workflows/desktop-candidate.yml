@@ -61,7 +61,10 @@ jobs:
       - name: Archive the macOS bundle
         if: runner.os == 'macOS'
         working-directory: desktop/src-tauri/target/release/bundle/macos
-        run: ditto -c -k --keepParent 'Sanguosha Practice.app' sanguosha-practice-macos-arm64.zip
+        run: |
+          codesign --force --sign - 'Sanguosha Practice.app'
+          codesign --verify --deep --strict 'Sanguosha Practice.app'
+          ditto -c -k --keepParent 'Sanguosha Practice.app' sanguosha-practice-macos-arm64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-practice-${{ matrix.platform.triple }}
