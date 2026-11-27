@@ -65,6 +65,22 @@ jobs:
           codesign --force --sign - 'Sanguosha Practice.app'
           codesign --verify --deep --strict 'Sanguosha Practice.app'
           ditto -c -k --keepParent 'Sanguosha Practice.app' sanguosha-practice-macos-arm64.zip
+      - name: Exercise the Windows installer and installed sidecar
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $installer = Get-ChildItem 'desktop/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          $installDir = Join-Path $env:RUNNER_TEMP 'sanguosha-practice-installed'
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer exited with $($result.ExitCode)" }
+          $desktop = Join-Path $installDir 'sanguosha-practice-desktop.exe'
+          if (-not (Test-Path $desktop)) { throw 'Desktop executable is missing' }
+          python tools/desktop_smoke.py (Join-Path $installDir 'practice-engine.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'The installed sidecar failed the practice' }
+          $uninstaller = Join-Path $installDir 'uninstall.exe'
+          $result = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0 -or (Test-Path $desktop)) { throw 'Uninstall failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-practice-${{ matrix.platform.triple }}

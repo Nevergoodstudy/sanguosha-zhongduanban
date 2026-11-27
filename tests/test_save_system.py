@@ -355,3 +355,23 @@ def test_practice_checkpoint_can_resume_with_the_same_rules_and_random_progress(
         {key: value for key, value in action.items() if key != "timestamp"}
         for action in engine.action_log
     ]
+
+
+def test_practice_checkpoint_rejects_changed_content_but_loads_earlier_files(tmp_path):
+    from game.practice_checkpoint import load_practice_checkpoint, save_practice_checkpoint
+
+    engine = GameEngine()
+    engine.setup_headless_game(2, seed=42)
+    destination = tmp_path / "practice.json"
+    save_practice_checkpoint(engine, destination)
+    checkpoint = json.loads(destination.read_text(encoding="utf-8"))
+    assert len(checkpoint["content_version"]) == 64
+
+    checkpoint["content_version"] = "0" * 64
+    destination.write_text(json.dumps(checkpoint), encoding="utf-8")
+    with pytest.raises(ValueError, match="different game content"):
+        load_practice_checkpoint(destination)
+
+    del checkpoint["content_version"]
+    destination.write_text(json.dumps(checkpoint), encoding="utf-8")
+    assert load_practice_checkpoint(destination).game_seed == 42

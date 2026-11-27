@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Literal
@@ -19,12 +21,26 @@ from .player import Player
 from .skill import SkillSystem
 
 
+@lru_cache(maxsize=1)
+def _content_version() -> str:
+    data_directory = Path(__file__).resolve().parent.parent / "data"
+    fingerprint = sha256()
+    for filename in (
+        "cards.json", "heroes.json", "heroes_new.json", "card_effects.json",
+        "skill_config.json", "skill_dsl.json",
+    ):
+        fingerprint.update(filename.encode("ascii"))
+        fingerprint.update(data_directory.joinpath(filename).read_text(encoding="utf-8").encode("utf-8"))
+    return fingerprint.hexdigest()
+
+
 class PracticeCheckpoint(BaseModel):
     """Store the complete state needed to start the next turn."""
 
     format: Literal["sanguosha-practice"]
     version: Literal[1]
     rules_version: Literal[1]
+    content_version: str | None = None
     seed: int
     random_state: tuple[int, tuple[int, ...], float | None]
     round_count: int
@@ -59,6 +75,7 @@ def save_practice_checkpoint(engine: GameEngine, destination: Path) -> None:
         format="sanguosha-practice",
         version=1,
         rules_version=1,
+        content_version=_content_version(),
         seed=engine.game_seed,
         random_state=engine.rng.getstate(),
         round_count=engine.round_count,
@@ -87,6 +104,8 @@ def save_practice_checkpoint(engine: GameEngine, destination: Path) -> None:
 def load_practice_checkpoint(source: Path) -> GameEngine:
     """Restore a practice game from a checkpoint made before the next turn."""
     checkpoint = PracticeCheckpoint.model_validate_json(source.read_bytes())
+    if checkpoint.content_version is not None and checkpoint.content_version != _content_version():
+        raise ValueError("Checkpoint was created with different game content")
     engine = GameEngine()
     engine.game_seed = checkpoint.seed
     engine.rng.setstate(checkpoint.random_state)
