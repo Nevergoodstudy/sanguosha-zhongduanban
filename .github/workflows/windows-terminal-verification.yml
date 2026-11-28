@@ -12,6 +12,14 @@ jobs:
   practice:
     runs-on: windows-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - columns: 80
+            rows: 24
+          - columns: 120
+            rows: 40
     steps:
       - uses: actions/setup-python@v6
         with:
@@ -19,12 +27,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: sanguosha-windows-amd64
-          run-id: 46127662234
+          run-id: 46161023374
           github-token: ${{ github.token }}
           path: candidate
       - run: 'python -m pip install --only-binary=:all: pywinpty==3.1.2'
       - name: Drive the packaged practice match through ConPTY
         shell: bash
+        env:
+          TERMINAL_COLUMNS: ${{ matrix.columns }}
+          TERMINAL_ROWS: ${{ matrix.rows }}
         run: |
           python -X utf8 - <<'PY'
           import hashlib
@@ -38,7 +49,7 @@ jobs:
           from winpty import PTY
 
           binary = Path("candidate/sanguosha-windows-amd64.exe").resolve()
-          checksum = "5ea8a0fef56d003de1ead5ee446d9cf4165d638d6153cfcb0cc536d656e9bc62"
+          checksum = "6a58aca7d4aec75a3e09cfef0f125d20f62ace0e83e616e22589dbbe9e0936fd"
           if hashlib.sha256(binary.read_bytes()).hexdigest() != checksum:
               raise SystemExit("Candidate checksum mismatch")
 
@@ -46,7 +57,7 @@ jobs:
               workdir = Path(directory)
               os.environ["SANGUOSHA_DATA_HOME"] = directory
               os.environ["SANGUOSHA_LOG_FILE"] = str(workdir / "game.log")
-              terminal = PTY(120, 44)
+              terminal = PTY(int(os.environ["TERMINAL_COLUMNS"]), int(os.environ["TERMINAL_ROWS"]))
               terminal.spawn(str(binary), " --lang zh_CN", directory)
               sequence = [
                   ("开始新游戏", ["\t", "\r"]),
@@ -56,7 +67,6 @@ jobs:
                   ("成功闪避", ["e"]),
                   ("确认弃牌", ["\r", "\t", "\r", "\t", "\r", "\x1b[Z", "\x1b[Z", "\x1b[Z", "\r"]),
                   ("出闪", ["\r"]),
-                  ("成功闪避", []),
                   ("选择手牌出牌，按 E 结束出牌", ["2"]),
                   ("选择「杀」的目标", ["\r"]),
                   ("再来一局", ["\t", "\r"]),
@@ -88,5 +98,7 @@ jobs:
               result = json.loads(history.read_text(encoding="utf-8"))["matches"][-1]
               if result["winner"] != "lord" or result["game_version"] != "4.0.0":
                   raise RuntimeError("Expected a completed practice victory for version 4.0.0")
+              if sum(event["kind"] == "dodge" for event in result["events"]) != 2:
+                  raise RuntimeError("Expected both successful dodge responses in the report")
               print("Windows candidate completed the keyboard practice and persisted the report.")
           PY
