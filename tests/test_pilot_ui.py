@@ -7,10 +7,10 @@ import asyncio
 from collections.abc import Callable
 
 import pytest
-from textual.widgets import Button, Select, Static
+from textual.widgets import Button, RichLog, Select, Static
 
 from game.match_history import MatchHistory
-from i18n import get_locale, set_locale
+from i18n import get_locale, set_locale, t
 from ui.textual_ui.app import SanguoshaApp
 from ui.textual_ui.modals.discard_modal import DiscardModal
 from ui.textual_ui.modals.response_modal import ShanResponseModal
@@ -234,6 +234,25 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
         assert app.screen.focused.id == "hero-0"
         await pilot.press("enter")
         await wait_for_ui(can_play)
+        play_screen = app.screen
+        log = play_screen.query_one("#battle-log", RichLog)
+        hint = t("ui.play.play_hint")
+        assert any(hint in log.render_line(row).text for row in range(log.content_region.height))
+        if size == (80, 24):
+            assert play_screen.has_class("compact")
+            await pilot.resize_terminal(120, 40)
+            await pilot.pause()
+            assert not play_screen.has_class("compact")
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+            assert play_screen.has_class("compact")
+        for selector in ("#battle-log", "#info-panel", "#btn-end"):
+            widget = play_screen.query_one(selector)
+            assert widget.content_region.height > 0
+            assert play_screen.region.contains_region(widget.region)
+        first_card = play_screen.query_one("CardWidget")
+        assert first_card.content_region.height >= 3
+        assert play_screen.region.contains_region(first_card.region)
         engine = app._engine
         hand_before = engine.human_player.hand[:]
         discard_before = engine.deck.discard_pile[:]
@@ -258,7 +277,9 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
             "shift+tab", "shift+tab", "shift+tab", "enter",
         )
         await wait_for_ui(lambda: isinstance(app.screen, ShanResponseModal))
-        assert app.screen.query_one("#btn-confirm")
+        confirm = app.screen.query_one("#btn-confirm", Button)
+        assert confirm.content_region.height > 0
+        assert app.screen.query_one("#modal-container").content_region.contains_region(confirm.region)
         await pilot.press("enter")
         await wait_for_ui(can_play)
         hand = app._engine.human_player.hand

@@ -11,6 +11,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
+from textual.events import Resize
 from textual.screen import ModalScreen, Screen
 from textual.worker import Worker
 from textual.widgets import Button, RichLog, Static
@@ -122,9 +123,25 @@ class GamePlayScreen(Screen):
     .action-btn:disabled {
         opacity: 50%;
     }
+    GamePlayScreen.compact #opponents {
+        max-height: 4;
+    }
+    GamePlayScreen.compact #play-area,
+    GamePlayScreen.compact #equip-section {
+        height: 1;
+        min-height: 1;
+        border: none;
+    }
+    GamePlayScreen.compact #hand-cards {
+        min-height: 5;
+    }
+    GamePlayScreen.compact CardWidget {
+        height: 5;
+    }
     """
 
     DEFAULT_PLAY_PHASE_TIMEOUT = 30  # 出牌阶段默认超时秒数
+    COMPACT_HEIGHT = 40
 
     def __init__(self, *, practice: bool = False):
         super().__init__()
@@ -156,7 +173,7 @@ class GamePlayScreen(Screen):
         yield PhaseIndicator(id="phase-bar")
         yield VerticalScroll(id="opponents")
         yield PlayArea(id="play-area")
-        yield RichLog(id="battle-log", highlight=True, markup=True, wrap=True)
+        yield RichLog(id="battle-log", highlight=True, markup=True, wrap=True, min_width=1)
         yield Static(_t("ui.play.info_panel"), id="info-panel")
         yield Container(
             EquipmentSlots(id="equip-section"),
@@ -180,8 +197,12 @@ class GamePlayScreen(Screen):
 
         yield Footer()
 
+    def on_resize(self, event: Resize) -> None:
+        self.set_class(event.size.height < self.COMPACT_HEIGHT, "compact")
+
     def on_mount(self) -> None:
         """挂载后设置 UI 桥接，开始游戏循环"""
+        self.set_class(self.size.height < self.COMPACT_HEIGHT, "compact")
         engine = self.engine
         # 设置 TextualBridge 作为 UI
         from ui.textual_ui.bridge import TextualUIBridge
@@ -710,8 +731,9 @@ class GamePlayScreen(Screen):
                 self._trigger_death_shake(msg)
             elif "你的回合" in msg:
                 msg = f"[bold cyan]🎮 {msg}[/bold cyan]"
-            log_widget.write(msg)
-            log_widget.scroll_end(animate=True)
+            log_widget.write(msg, scroll_end=False)
+            # Let the new log height settle before scrolling to the latest line.
+            self.call_after_refresh(log_widget.scroll_end, animate=False, x_axis=False)
         except Exception:
             pass
 
