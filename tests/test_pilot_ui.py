@@ -237,7 +237,11 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
         play_screen = app.screen
         log = play_screen.query_one("#battle-log", RichLog)
         hint = t("ui.play.play_hint")
-        assert any(hint in log.render_line(row).text for row in range(log.content_region.height))
+        await wait_for_ui(
+            lambda: any(
+                hint in log.render_line(row).text for row in range(log.content_region.height)
+            )
+        )
         if size == (80, 24):
             assert play_screen.has_class("compact")
             await pilot.resize_terminal(120, 40)
