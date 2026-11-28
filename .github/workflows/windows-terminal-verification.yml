@@ -18,8 +18,8 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
-          name: sanguosha-4.0.0-windows-amd64.exe
-          run-id: 45934282903
+          name: sanguosha-windows-amd64
+          run-id: 46127662234
           github-token: ${{ github.token }}
           path: candidate
       - run: 'python -m pip install --only-binary=:all: pywinpty==3.1.2'
@@ -37,8 +37,8 @@ jobs:
 
           from winpty import PTY
 
-          binary = Path("candidate/sanguosha-4.0.0-windows-amd64.exe").resolve()
-          checksum = binary.with_suffix(".exe.sha256").read_text(encoding="ascii").split()[0]
+          binary = Path("candidate/sanguosha-windows-amd64.exe").resolve()
+          checksum = "5ea8a0fef56d003de1ead5ee446d9cf4165d638d6153cfcb0cc536d656e9bc62"
           if hashlib.sha256(binary.read_bytes()).hexdigest() != checksum:
               raise SystemExit("Candidate checksum mismatch")
 
