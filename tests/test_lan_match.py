@@ -30,10 +30,11 @@ async def test_two_lan_players_finish_and_can_restore_their_prompt(monkeypatch):
                 engine.deck.draw_pile.remove(card)
                 seat.hand.append(card)
         opponent.hp = 1
-        irrelevant = [c for c in engine.deck.draw_pile if c.name == CardName.SHAN][:4]
-        for card in irrelevant:
+        # Cover two turn draws, Yingzi's extra draw, and two Wuzhong draws.
+        safe_draws = [card for card in engine.deck.draw_pile if card.name == CardName.SHAN][:5]
+        for card in safe_draws:
             engine.deck.draw_pile.remove(card)
-        engine.deck.draw_pile.extend(irrelevant)
+        engine.deck.draw_pile.extend(safe_draws)
 
     monkeypatch.setattr(GameEngine, "start_game", start_with_reproducible_hand)
     server = GameServer(host="127.0.0.1", port=0, lan_preview=True)
