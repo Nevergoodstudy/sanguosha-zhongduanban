@@ -3,13 +3,20 @@
 Uses app.run_test() to actually drive screens headlessly with Pilot.
 """
 
+import asyncio
+from collections.abc import Callable
+
 import pytest
 from textual.widgets import Button, Select, Static
 
 from game.match_history import MatchHistory
 from i18n import get_locale, set_locale
 from ui.textual_ui.app import SanguoshaApp
+from ui.textual_ui.modals.discard_modal import DiscardModal
+from ui.textual_ui.modals.response_modal import ShanResponseModal
+from ui.textual_ui.modals.target_modal import TargetSelectModal
 from ui.textual_ui.screens.game_over import GameOverScreen, MatchReportScreen
+from ui.textual_ui.screens.game_play import GamePlayScreen
 from ui.textual_ui.screens.game_setup import GameSetupScreen
 from ui.textual_ui.screens.main_menu import MainMenuScreen
 from ui.textual_ui.screens.rules import RulesScreen
@@ -210,38 +217,56 @@ async def test_keyboard_practice_match_saves_report(size, locale, tmp_path, monk
     monkeypatch.setenv("SANGUOSHA_DATA_HOME", str(tmp_path))
     app = SanguoshaApp()
     async with app.run_test(size=size) as pilot:
+        async def wait_for_ui(ready: Callable[[], bool]) -> None:
+            async def wait_until_ready() -> None:
+                while not ready():
+                    await pilot.pause(0.01)
+
+            await asyncio.wait_for(wait_until_ready(), timeout=5)
+            await pilot.pause()
+
+        def can_play() -> bool:
+            screen = app.screen
+            return isinstance(screen, GamePlayScreen) and screen._play_request is not None
+
         await pilot.press("tab", "enter")
         await pilot.pause()
         assert app.screen.focused.id == "hero-0"
         await pilot.press("enter")
-        await pilot.pause()
+        await wait_for_ui(can_play)
         engine = app._engine
         hand_before = engine.human_player.hand[:]
         discard_before = engine.deck.discard_pile[:]
-        await pilot.press("1", "escape")
-        await pilot.pause()
+        await pilot.press("1")
+        await wait_for_ui(lambda: isinstance(app.screen, TargetSelectModal))
+        await pilot.press("escape")
+        await wait_for_ui(can_play)
         assert engine.human_player.hand == hand_before
         assert engine.deck.discard_pile == discard_before
         assert not engine.action_log
 
-        await pilot.press("1", "enter")
-        await pilot.pause()
+        await pilot.press("1")
+        await wait_for_ui(lambda: isinstance(app.screen, TargetSelectModal))
+        await pilot.press("enter")
+        await wait_for_ui(can_play)
         assert not app._engine.players[1].get_cards_by_name("闪")
         await pilot.press("e")
-        await pilot.pause()
+        await wait_for_ui(lambda: isinstance(app.screen, DiscardModal))
         assert app.screen.query_one("#discard-title")
         await pilot.press(
             "enter", "tab", "enter", "tab", "enter",
             "shift+tab", "shift+tab", "shift+tab", "enter",
         )
-        await pilot.pause()
+        await wait_for_ui(lambda: isinstance(app.screen, ShanResponseModal))
         assert app.screen.query_one("#btn-confirm")
         await pilot.press("enter")
-        await pilot.pause(0.6)
+        await wait_for_ui(can_play)
         hand = app._engine.human_player.hand
         strike_index = next(i for i, card in enumerate(hand) if card.name == "杀")
-        await pilot.press(str(strike_index + 1), "enter")
-        await pilot.pause()
+        await pilot.press(str(strike_index + 1))
+        await wait_for_ui(lambda: isinstance(app.screen, TargetSelectModal))
+        await pilot.press("enter")
+        await wait_for_ui(lambda: isinstance(app.screen, GameOverScreen))
         assert isinstance(app.screen, GameOverScreen)
         assert app.screen.focused.id == "btn-again"
         assert [entry["sequence"] for entry in engine.action_log] == list(
