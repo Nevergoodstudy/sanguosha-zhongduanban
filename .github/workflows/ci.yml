@@ -166,6 +166,13 @@ jobs:
       - name: Verify arm64 and launch in a terminal
         if: runner.os == 'macOS'
         run: python tools/macos_smoke.py dist/sanguosha-macos-arm64
+      - name: Exercise packaged LAN clients
+        shell: bash
+        timeout-minutes: 3
+        env:
+          BINARY_NAME: ${{ matrix.platform.build_name }}
+          EXTENSION: ${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: python tools/lan_cli_smoke.py "dist/$BINARY_NAME$EXTENSION"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.build_name }}

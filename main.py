@@ -82,23 +82,12 @@ def main():
     checkpoint_options.add_argument(
         "--resume-practice", type=Path, metavar="FILE", help="从指定文件恢复练习局"
     )
-    parser.add_argument("--desktop-practice", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     # 设置语言
     from i18n import set_locale
 
     set_locale(args.lang)
-
-    if args.desktop_practice:
-        import asyncio
-
-        from game.match_history import MatchHistory
-        from tools.desktop_practice import run
-
-        setup_logging(log_file=str(MatchHistory.default_path().with_name("desktop-practice.log")))
-        asyncio.run(run())
-        return
 
     setup_logging(enable_console=False)
 
