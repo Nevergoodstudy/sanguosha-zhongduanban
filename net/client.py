@@ -408,10 +408,13 @@ async def cli_client_main(server_url: str, player_name: str):
         print("连接失败，请检查服务器地址。", flush=True)
         return
 
-    reader = asyncio.StreamReader()
-    input_transport, _ = await asyncio.get_running_loop().connect_read_pipe(
-        lambda: asyncio.StreamReaderProtocol(reader), sys.stdin
-    )
+    reader = None
+    input_transport = None
+    if sys.platform != "win32":
+        reader = asyncio.StreamReader()
+        input_transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+            lambda: asyncio.StreamReaderProtocol(reader), sys.stdin
+        )
     connection = asyncio.create_task(client.run())
     print(
         "create [人数] / join 房间号 / ready / start / hero 武将ID / "
@@ -420,8 +423,13 @@ async def cli_client_main(server_url: str, player_name: str):
         flush=True,
     )
     try:
-        while line := await reader.readline():
-            command, *arguments = line.decode().strip().split() or [""]
+        while True:
+            line = (await reader.readline()).decode() if reader is not None else await asyncio.to_thread(
+                sys.stdin.readline
+            )
+            if not line:
+                break
+            command, *arguments = line.split() or [""]
             if command == "quit":
                 break
             try:
@@ -457,7 +465,8 @@ async def cli_client_main(server_url: str, player_name: str):
             except (IndexError, ValueError):
                 print("命令参数有误", flush=True)
     finally:
-        input_transport.close()
+        if input_transport is not None:
+            input_transport.close()
         await client.disconnect()
         await connection
 

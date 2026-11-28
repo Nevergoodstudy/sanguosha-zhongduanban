@@ -32,9 +32,20 @@ sanguosha --latest-report > report.json
 sanguosha --replay report.json --step
 ```
 
+## 保存与恢复练习局
+
+启动时指定练习局存档，进入练习后会在每回合开始前保存。退出后用同一个文件恢复，退出时尚未打完的回合会重新开始。结算并成功保存战报后会移除这份续局存档。
+
+```sh
+sanguosha --practice-save practice.json
+sanguosha --resume-practice practice.json
+```
+
 ## 局域网内测
 
-用三个终端在本机启动服务端和两个客户端。以下示例使用回环地址。
+服务端默认只在本机监听。用三个终端在本机启动服务端和两个客户端。
+
+跨设备内测时，房主把示例中的 `127.0.0.1` 换成本机的局域网地址，保留 `--lan-preview`。另一台设备用房主的局域网地址连接。
 
 ```sh
 sanguosha --server 127.0.0.1:8765 --lan-preview
@@ -54,4 +65,4 @@ sanguosha --connect 127.0.0.1:8765 --name 玩家二
 | `discard 牌号…` | 提交本次弃牌选择 |
 | `quit` | 退出客户端 |
 
-当前发布的联机验证范围为本机双客户端。项目的实际验证环境和覆盖范围见[实施与验收记录](macos-improvement-plan.md)。
+联验断线恢复时，等客户端出现本次出牌提示后短暂断开该设备的网络，保持游戏进程和房主服务器运行。恢复网络后，客户端会尝试自动重连。检查房间、手牌和当前出牌提示是否恢复，再继续对局并核对两端的结算。当前已验证本机双客户端及 Mac 至 Linux 容器连接。[验收范围](research/phase-1-3-candidate.md#阶段-3--受控-lan)

@@ -5,12 +5,13 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
+from textual.events import Resize
 from textual.screen import ModalScreen, Screen
 from textual.worker import Worker
 from textual.widgets import Button, RichLog, Static
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from game.card import Card
     from game.engine import GameEngine
     from game.player import Player
+    from ui.textual_ui.app import SanguoshaApp
 
 
 ModalResult = TypeVar("ModalResult")
@@ -121,9 +123,25 @@ class GamePlayScreen(Screen):
     .action-btn:disabled {
         opacity: 50%;
     }
+    GamePlayScreen.compact #opponents {
+        max-height: 4;
+    }
+    GamePlayScreen.compact #play-area,
+    GamePlayScreen.compact #equip-section {
+        height: 1;
+        min-height: 1;
+        border: none;
+    }
+    GamePlayScreen.compact #hand-cards {
+        min-height: 5;
+    }
+    GamePlayScreen.compact CardWidget {
+        height: 5;
+    }
     """
 
     DEFAULT_PLAY_PHASE_TIMEOUT = 30  # 出牌阶段默认超时秒数
+    COMPACT_HEIGHT = 40
 
     def __init__(self, *, practice: bool = False):
         super().__init__()
@@ -155,7 +173,7 @@ class GamePlayScreen(Screen):
         yield PhaseIndicator(id="phase-bar")
         yield VerticalScroll(id="opponents")
         yield PlayArea(id="play-area")
-        yield RichLog(id="battle-log", highlight=True, markup=True, wrap=True)
+        yield RichLog(id="battle-log", highlight=True, markup=True, wrap=True, min_width=1)
         yield Static(_t("ui.play.info_panel"), id="info-panel")
         yield Container(
             EquipmentSlots(id="equip-section"),
@@ -179,8 +197,12 @@ class GamePlayScreen(Screen):
 
         yield Footer()
 
+    def on_resize(self, event: Resize) -> None:
+        self.set_class(event.size.height < self.COMPACT_HEIGHT, "compact")
+
     def on_mount(self) -> None:
         """挂载后设置 UI 桥接，开始游戏循环"""
+        self.set_class(self.size.height < self.COMPACT_HEIGHT, "compact")
         engine = self.engine
         # 设置 TextualBridge 作为 UI
         from ui.textual_ui.bridge import TextualUIBridge
@@ -223,9 +245,16 @@ class GamePlayScreen(Screen):
         """在后台线程运行游戏主循环"""
         engine = self.engine
         from game.config import get_config
+        from game.practice_checkpoint import save_practice_checkpoint
 
+        checkpoint = cast("SanguoshaApp", self.app).practice_checkpoint if self.practice else None
         delay = get_config().ai_turn_delay
         while not self._quit_requested.is_set() and not engine.is_game_over():
+            if checkpoint is not None:
+                try:
+                    save_practice_checkpoint(engine, checkpoint)
+                except OSError as error:
+                    self._post_log(_t("ui.practice.checkpoint_error", error=error))
             current = engine.current_player
             if not current.is_ai:
                 self._post_log(_t("ui.play.your_turn"))
@@ -271,6 +300,11 @@ class GamePlayScreen(Screen):
         from game.match_history import record_completed_match
 
         report, saved = record_completed_match(engine, practice=self.practice)
+        if checkpoint is not None and saved:
+            try:
+                checkpoint.unlink(missing_ok=True)
+            except OSError as error:
+                self._post_log(_t("ui.practice.checkpoint_error", error=error))
         self.app.call_from_thread(
             self.app.push_screen,
             GameOverScreen(
@@ -309,16 +343,16 @@ class GamePlayScreen(Screen):
         if self._quit_requested.is_set():
             return
         selected = cards[-count:] if indices is None else [cards[i] for i in indices]
-        self.engine.discard_cards(player, selected)
+        self.engine.discard_for_turn(player, selected)
 
-    def _handle_card_play(self, player: Player, card) -> None:
+    def _handle_card_play(self, player: Player, card: Card) -> None:
         """处理出牌"""
         from game.card import CardName, CardSubtype, CardType
 
         engine = self.engine
 
         if card.card_type == CardType.EQUIPMENT:
-            engine.use_card(player, card)
+            engine.play_hand_card(player, card)
         elif card.name == CardName.SHA:
             if not player.can_use_sha():
                 from game.constants import SkillId
@@ -334,12 +368,12 @@ class GamePlayScreen(Screen):
                 player, targets, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name == CardName.TAO:
             if player.hp >= player.max_hp:
                 self._post_log("⚠ 体力已满")
                 return
-            engine.use_card(player, card)
+            engine.play_hand_card(player, card)
         elif card.name == CardName.SHAN:
             self._post_log("⚠ 闪不能主动使用")
             return
@@ -352,7 +386,7 @@ class GamePlayScreen(Screen):
                 player, others, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name in [CardName.GUOHE, CardName.SHUNSHOU]:
             others = engine.get_other_players(player)
             valid = [t for t in others if t.has_any_card()]
@@ -365,7 +399,7 @@ class GamePlayScreen(Screen):
                 player, valid, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name == CardName.LEBUSISHU:
             # 乐不思蜀: 选择一个非自己的目标（无距离限制）
             others = engine.get_other_players(player)
@@ -380,7 +414,7 @@ class GamePlayScreen(Screen):
                 player, valid, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name == CardName.BINGLIANG:
             # 兵粮寸断: 选择距离≤1的非自己目标
             others = engine.get_other_players(player)
@@ -397,7 +431,7 @@ class GamePlayScreen(Screen):
                 player, valid, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name == CardName.HUOGONG:
             # 火攻: 选择一个有手牌的目标（可选自己）
             alive = [p for p in engine.players if p.is_alive and p.hand_count > 0]
@@ -408,7 +442,7 @@ class GamePlayScreen(Screen):
                 player, alive, _t("ui.modal.target_for", card=card_name(card.name))
             )
             if target:
-                engine.use_card(player, card, [target])
+                engine.play_hand_card(player, card, [target])
         elif card.name == CardName.JIEDAO:
             # 借刀杀人: 先选有武器的其他玩家(wielder)，再选 wielder 攻击范围内的目标
             others = engine.get_other_players(player)
@@ -435,7 +469,7 @@ class GamePlayScreen(Screen):
                 player, sha_targets, _t("ui.modal.target_borrowed_strike", name=wielder.name)
             )
             if sha_target:
-                engine.use_card(player, card, [wielder, sha_target])
+                engine.play_hand_card(player, card, [wielder, sha_target])
         elif card.name == CardName.TIESUO:
             # 铁索连环: 选择0-2个目标（0=重铸）
             others = [p for p in engine.players if p.is_alive]
@@ -444,16 +478,16 @@ class GamePlayScreen(Screen):
             )
             if targets is None:
                 return  # 取消
-            engine.use_card(player, card, targets)
+            engine.play_hand_card(player, card, targets)
         elif card.subtype == CardSubtype.ALCOHOL:
             # 酒: 检查本回合是否已使用
             if player.alcohol_used:
                 self._post_log("⚠ 本回合已使用过酒")
                 return
-            engine.use_card(player, card)
+            engine.play_hand_card(player, card)
         else:
             # 群体锦囊(南蛮/万箭/桃园/闪电)/其他
-            engine.use_card(player, card)
+            engine.play_hand_card(player, card)
 
     def _handle_skill_use(self, player: Player, skill_id: str) -> None:
         """处理技能使用"""
@@ -697,8 +731,9 @@ class GamePlayScreen(Screen):
                 self._trigger_death_shake(msg)
             elif "你的回合" in msg:
                 msg = f"[bold cyan]🎮 {msg}[/bold cyan]"
-            log_widget.write(msg)
-            log_widget.scroll_end(animate=True)
+            log_widget.write(msg, scroll_end=False)
+            # Let the new log height settle before scrolling to the latest line.
+            self.call_after_refresh(log_widget.scroll_end, animate=False, x_axis=False)
         except Exception:
             pass
 

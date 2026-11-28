@@ -155,7 +155,7 @@ class LanMatch(DefaultRequestHandler):
                 case "play_card":
                     command = PlayCardAction(
                         player.id,
-                        card_id=id(cards[response["card_id"]]),
+                        card_id=cards[response["card_id"]].id,
                         target_ids=response["target_ids"],
                     )
                 case "use_skill":
@@ -179,7 +179,7 @@ class LanMatch(DefaultRequestHandler):
         if self.should_stop():
             return
         indices = response.get("card_ids", list(range(count)))
-        self.engine.discard_cards(player, [cards[index] for index in indices])
+        self.engine.discard_for_turn(player, [cards[index] for index in indices])
 
     def _respond(self, player: Player, kind: str, cards: list[Card]) -> Card | None:
         if not cards or self.should_stop():

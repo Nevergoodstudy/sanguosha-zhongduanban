@@ -18,6 +18,8 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from i18n import card_name, set_locale, t
+
 
 def expect(terminal: int, output: bytearray, label: str) -> None:
     """Wait for a visible Textual label or raise after the step times out."""
@@ -49,27 +51,29 @@ def press(terminal: int, *keys: bytes) -> None:
 def play(terminal: int, *, practice: bool) -> None:
     """Drive a classic start or a complete practice match by keyboard."""
     output = bytearray()
-    expect(terminal, output, "开始新游戏")
+    play_hint = t("ui.play.play_hint")
+    target_prompt = t("ui.modal.target_for", card=card_name("sha"))
+    expect(terminal, output, t("ui.menu.start").split(" ", 1)[1])
     if not practice:
         press(terminal, b"\r")
-        expect(terminal, output, "开始游戏")
+        expect(terminal, output, t("ui.setup.start").split(" ", 1)[1])
         press(terminal, b"\x1b[Z", b"\r")  # Start Game follows the last setup setting.
-        expect(terminal, output, "主公选将")
+        expect(terminal, output, t("ui.hero.lord"))
         os.write(terminal, b"\r")
-        expect(terminal, output, "选择手牌出牌，按 E 结束出牌")
+        expect(terminal, output, play_hint)
         press(terminal, b"q")
         return
 
     press(terminal, b"\t", b"\r")
-    expect(terminal, output, "确认武将")
+    expect(terminal, output, t("ui.hero.practice"))
     os.write(terminal, b"\r")
-    expect(terminal, output, "选择手牌出牌，按 E 结束出牌")
+    expect(terminal, output, play_hint)
     press(terminal, b"1")
-    expect(terminal, output, "选择「杀」的目标")
+    expect(terminal, output, target_prompt)
     os.write(terminal, b"\r")
-    expect(terminal, output, "成功闪避")
+    expect(terminal, output, t("combat.dodge_success", name="AI_2").strip())
     os.write(terminal, b"e")
-    expect(terminal, output, "确认弃牌")
+    expect(terminal, output, t("ui.modal.discard"))
     press(
         terminal,
         b"\r",
@@ -82,27 +86,28 @@ def play(terminal: int, *, practice: bool) -> None:
         b"\x1b[Z",
         b"\r",
     )
-    expect(terminal, output, "出闪")
+    expect(terminal, output, t("ui.modal.shan"))
     os.write(terminal, b"\r")
-    expect(terminal, output, "成功闪避")
-    expect(terminal, output, "选择手牌出牌，按 E 结束出牌")
+    expect(terminal, output, play_hint)
     # The terminal may redraw the previous hint while the AI turn is winding down.
     time.sleep(0.6)
     press(terminal, b"2")
-    expect(terminal, output, "选择「杀」的目标")
+    expect(terminal, output, target_prompt)
     os.write(terminal, b"\r")
-    expect(terminal, output, "再来一局")
+    expect(terminal, output, t("ui.result.again"))
     press(terminal, b"\t", b"\r")
-    expect(terminal, output, "游戏版本")
+    expect(terminal, output, t("ui.report.version", version="").strip())
     os.write(terminal, b"\x11")  # Ctrl+Q
 
 
-def smoke(binary: Path, *, practice: bool) -> None:
+def smoke(binary: Path, *, practice: bool, columns: int, rows: int, locale: str) -> None:
     """Run the executable and verify its result from a separate directory."""
+    set_locale(locale)
+    print(f"Running {'practice' if practice else 'classic'} at {columns}×{rows} ({locale})", flush=True)
     with TemporaryDirectory(prefix="sanguosha-smoke-") as run_dir:
         terminal, tty = pty.openpty()
         try:
-            fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack("HHHH", 44, 120, 0, 0))
+            fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
             env = {
                 **os.environ,
                 "TERM": "xterm-256color",
@@ -110,7 +115,7 @@ def smoke(binary: Path, *, practice: bool) -> None:
                 "SANGUOSHA_LOG_FILE": str(Path(run_dir) / "game.log"),
             }
             with subprocess.Popen(
-                [binary, "--lang", "zh_CN"],
+                [binary, "--lang", locale],
                 cwd=run_dir,
                 env=env,
                 stdin=tty,
@@ -140,6 +145,9 @@ def smoke(binary: Path, *, practice: bool) -> None:
             result = json.loads(path.read_text(encoding="utf-8"))["matches"][-1]
             if result["winner"] != "lord" or result["game_version"] in {"", "source"}:
                 raise RuntimeError("Expected a victory and the bundled game version in the report")
+            dodges = [event for event in result["events"] if event["kind"] == "dodge"]
+            if len(dodges) != 2:
+                raise RuntimeError("Expected both successful dodge responses in the report")
             print(f"Persisted practice victory for game version {result['game_version']}")
 
 
@@ -149,5 +157,6 @@ if __name__ == "__main__":
     if architecture != "arm64":
         sys.exit(f"Expected an arm64 executable, found {architecture}")
     subprocess.run(["codesign", "--verify", "--verbose=2", binary], check=True)
-    smoke(binary, practice=False)
-    smoke(binary, practice=True)
+    smoke(binary, practice=False, columns=120, rows=40, locale="zh_CN")
+    smoke(binary, practice=True, columns=120, rows=40, locale="en_US")
+    smoke(binary, practice=True, columns=80, rows=24, locale="zh_CN")

@@ -67,16 +67,16 @@ class EasyStrategy:
         """简单模式：尝试使用卡牌"""
         # 装备牌直接使用
         if card.card_type == CardType.EQUIPMENT:
-            return engine.use_card(player, card)
+            return engine.play_hand_card(player, card)
 
         # 自用锦囊
         if card.name in [CardName.WUZHONG, CardName.TAOYUAN]:
-            return engine.use_card(player, card)
+            return engine.play_hand_card(player, card)
 
         # 桃（需要时使用）
         if card.name == CardName.TAO:
             if player.hp < player.max_hp:
-                return engine.use_card(player, card)
+                return engine.play_hand_card(player, card)
             return False
 
         # 需要目标的牌
@@ -85,14 +85,14 @@ class EasyStrategy:
                 targets = engine.get_targets_in_range(player)
                 if targets:
                     target = engine.rng.choice(targets)
-                    return engine.use_card(player, card, [target])
+                    return engine.play_hand_card(player, card, [target])
 
         elif card.name in [CardName.JUEDOU, CardName.GUOHE]:
             others = engine.get_other_players(player)
             valid_targets = [t for t in others if t.has_any_card() or card.name != CardName.GUOHE]
             if valid_targets:
                 target = engine.rng.choice(valid_targets)
-                return engine.use_card(player, card, [target])
+                return engine.play_hand_card(player, card, [target])
 
         elif card.name == CardName.SHUNSHOU:
             others = engine.get_other_players(player)
@@ -101,10 +101,10 @@ class EasyStrategy:
             ]
             if valid_targets:
                 target = engine.rng.choice(valid_targets)
-                return engine.use_card(player, card, [target])
+                return engine.play_hand_card(player, card, [target])
 
         elif card.name in [CardName.NANMAN, CardName.WANJIAN]:
-            return engine.use_card(player, card)
+            return engine.play_hand_card(player, card)
 
         elif card.name == CardName.LEBUSISHU:
             others = engine.get_other_players(player)
@@ -112,7 +112,7 @@ class EasyStrategy:
                 t for t in others if not any(c.name == CardName.LEBUSISHU for c in t.judge_area)
             ]
             if valid:
-                return engine.use_card(player, card, [engine.rng.choice(valid)])
+                return engine.play_hand_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.BINGLIANG:
             others = engine.get_other_players(player)
@@ -123,13 +123,13 @@ class EasyStrategy:
                 and not any(c.name == CardName.BINGLIANG for c in t.judge_area)
             ]
             if valid:
-                return engine.use_card(player, card, [engine.rng.choice(valid)])
+                return engine.play_hand_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.HUOGONG:
             others = engine.get_other_players(player)
             valid = [t for t in others if t.hand_count > 0]
             if valid:
-                return engine.use_card(player, card, [engine.rng.choice(valid)])
+                return engine.play_hand_card(player, card, [engine.rng.choice(valid)])
 
         elif card.name == CardName.JIEDAO:
             others = engine.get_other_players(player)
@@ -144,25 +144,25 @@ class EasyStrategy:
                     and engine.is_in_attack_range(wielder, t)
                 ]
                 if sha_targets:
-                    return engine.use_card(player, card, [wielder, engine.rng.choice(sha_targets)])
+                    return engine.play_hand_card(player, card, [wielder, engine.rng.choice(sha_targets)])
 
         elif card.name == CardName.TIESUO:
             others = [p for p in engine.get_other_players(player) if p.is_alive]
             if others and engine.rng.random() < 0.5:
                 targets = engine.rng.sample(others, min(2, len(others)))
-                return engine.use_card(player, card, targets)
+                return engine.play_hand_card(player, card, targets)
             else:
-                return engine.use_card(player, card)  # 重铸
+                return engine.play_hand_card(player, card)  # 重铸
 
         elif card.name == CardName.SHANDIAN:
             has_shandian = any(c.name == CardName.SHANDIAN for c in player.judge_area)
             if not has_shandian:
-                return engine.use_card(player, card)
+                return engine.play_hand_card(player, card)
 
         elif card.subtype == CardSubtype.ALCOHOL:
             if not player.alcohol_used and player.can_use_sha():
                 sha = player.get_cards_by_name(CardName.SHA)
                 if sha:
-                    return engine.use_card(player, card)
+                    return engine.play_hand_card(player, card)
 
         return False

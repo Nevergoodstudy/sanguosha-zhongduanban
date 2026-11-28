@@ -41,9 +41,9 @@ def main():
     parser.add_argument(
         "--server",
         nargs="?",
-        const="0.0.0.0:8765",
+        const="127.0.0.1:8765",
         default=None,
-        help="启动服务端 (默认 0.0.0.0:8765)",
+        help="启动服务端 (默认 127.0.0.1:8765)",
     )
     parser.add_argument(
         "--connect",
@@ -75,6 +75,13 @@ def main():
         help="回放时逐步执行",
     )
     parser.add_argument("--latest-report", action="store_true", help="以 JSON 导出最近一局战报")
+    checkpoint_options = parser.add_mutually_exclusive_group()
+    checkpoint_options.add_argument(
+        "--practice-save", type=Path, metavar="FILE", help="练习局每回合保存到指定文件"
+    )
+    checkpoint_options.add_argument(
+        "--resume-practice", type=Path, metavar="FILE", help="从指定文件恢复练习局"
+    )
     args = parser.parse_args()
 
     # 设置语言
@@ -104,7 +111,7 @@ def main():
 
         cfg = get_config()
         host, _, port = args.server.partition(":")
-        host = host or "0.0.0.0"
+        host = host or "127.0.0.1"
         port = int(port) if port else 8765
         server = GameServer(
             host=host,
@@ -196,7 +203,22 @@ def main():
     try:
         from ui.textual_ui import SanguoshaApp
 
-        app = SanguoshaApp()
+        if args.practice_save is not None and args.practice_save.exists():
+            parser.error(f"Checkpoint already exists: {args.practice_save}")
+        resume_engine = None
+        if args.resume_practice is not None:
+            from game.practice_checkpoint import load_practice_checkpoint
+
+            try:
+                resume_engine = load_practice_checkpoint(args.resume_practice)
+                if resume_engine.human_player is None:
+                    parser.error("Checkpoint does not contain a human seat")
+            except (OSError, ValueError) as error:
+                parser.error(str(error))
+        app = SanguoshaApp(
+            practice_checkpoint=args.practice_save or args.resume_practice,
+            resume_engine=resume_engine,
+        )
         app.run()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt - exiting")
